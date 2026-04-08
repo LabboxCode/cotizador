@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-
+import { useState, useMemo, useEffect } from "react";
+ 
 const STUDIES_RAW = [
 {"n":"Gen MTHFR","p":4000,"te":"14 (dias)","ay":8,"ind":"No requiere indicación especial","sin":"PCR Mutación 677 C T en el gen de la MTHFR, PCR Gen MTHFR, MTHFR","cat":"Ginecologia","co":1339.8,"ch":null,"mo":null,"sw":null,"ts":null},
 {"n":"KOH","p":350,"te":"1 (dias)","ay":0,"ind":"Sin tratamientos, sin lavarse manos, pies, piel, cabellos, que sean partes afectadas, sin antimicoticos de aplicación local","sin":"Búsqueda de estructuras fúngicas","cat":"Infectologia","co":62.64,"ch":null,"mo":null,"sw":null,"ts":null},
@@ -130,30 +130,30 @@ const STUDIES_RAW = [
 {"n":"TGO- ASPARTATO AMINO TRANSFERASA","p":150,"te":"1 (dias)","ay":8,"ind":"No requiere indicación especial","sin":"ALAT, TGO","cat":"Ginecologia","co":82.8,"ch":null,"mo":null,"sw":null,"ts":null},
 {"n":"TGP - ALANINA AMINO TRANSFERASA","p":150,"te":"6 (dias)","ay":8,"ind":"No requiere indicación especial","sin":"ASAT, TGP","cat":"Ginecologia","co":82.8,"ch":null,"mo":null,"sw":null,"ts":null},
 ];
-
+ 
 const STUDIES = []; const seen = new Set();
 for (const s of STUDIES_RAW) { if (!seen.has(s.n)) { seen.add(s.n); STUDIES.push(s); } }
-
+ 
 function parseTe(te) { if (!te) return null; const m = te.match(/(\d+)/); return m ? parseInt(m[1]) : null; }
 function roundTo50(v) { return Math.round(v / 50) * 50; }
 function fmt(n) { return "$" + Number(n).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-
+ 
 const C = { purple: "#280C4C", purpleLight: "#7535CA", orange: "#FC7A1D", teal: "#00EBD5", orangeDark: "#954003" };
 const font = "'Montserrat', sans-serif";
-
+ 
 export default function App() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState([]);
   const [isSocio, setIsSocio] = useState(false);
   const [showQuote, setShowQuote] = useState(false);
   const [catFilter, setCatFilter] = useState("Todas");
-
+ 
   const categories = useMemo(() => {
     const cats = new Set();
     STUDIES.forEach(s => { if (s.cat) s.cat.split(",").forEach(c => cats.add(c.trim())); });
     return ["Todas", ...Array.from(cats).filter(Boolean).sort()];
   }, []);
-
+ 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     return STUDIES.filter(s => {
@@ -165,10 +165,10 @@ export default function App() {
       return n.includes(q) || sy.includes(q);
     });
   }, [search, catFilter]);
-
+ 
   const add = (s) => { if (!selected.find(x => x.n === s.n)) setSelected([...selected, s]); };
   const rem = (n) => setSelected(selected.filter(s => s.n !== n));
-
+ 
   const subtotal = selected.reduce((s, x) => s + x.p, 0);
   const totalCost = selected.reduce((s, x) => s + (x.co || 0), 0);
   const compTotal = selected.reduce((s, x) => {
@@ -181,7 +181,7 @@ export default function App() {
   const final = isSocio ? totalDisc : subtotal;
   const margin = final > 0 ? ((final - totalCost) / final * 100) : 0;
   const profit = final - totalCost;
-
+ 
   const delSummary = useMemo(() => {
     if (!selected.length) return "";
     const tt = selected.map(s => ({ n: s.n, d: parseTe(s.te) })).filter(t => t.d !== null);
@@ -192,14 +192,31 @@ export default function App() {
     if (exc.length <= 3) return `${mn} día${mn !== 1 ? "s" : ""} para la mayoría, excepto ${exc.map(e => `${e.n}: ${e.d} días`).join(", ")}`;
     return `Entre ${mn} y ${Math.max(...tt.map(t => t.d))} días`;
   }, [selected]);
-
+ 
   const specInd = useMemo(() => selected.filter(s => s.ind && !s.ind.includes("No requiere") && s.ind.trim()), [selected]);
+  // Consolidated indications: group studies that share the same indication text
+  const consolidatedInd = useMemo(() => {
+    const map = new Map();
+    specInd.forEach(s => {
+      const key = s.ind.trim();
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(s.n);
+    });
+    return Array.from(map.entries()).map(([ind, names]) => ({ ind, names }));
+  }, [specInd]);
   const maxAy = useMemo(() => { const a = selected.map(s => s.ay).filter(a => a > 0); return a.length ? Math.max(...a) : 0; }, [selected]);
-
+ 
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+ 
   return (
     <div style={{ fontFamily: font, background: "#f7f5fa", minHeight: "100vh" }}>
       <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-
+ 
       {/* Header */}
       <div style={{ background: `linear-gradient(135deg, ${C.purple} 0%, ${C.purpleLight} 100%)`, padding: "14px 24px", display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: 24, fontWeight: 800, color: "#fff", letterSpacing: -0.5 }}>lab</span>
@@ -214,10 +231,10 @@ export default function App() {
           </label>
         </div>
       </div>
-
-      <div style={{ display: "flex", maxWidth: 1400, margin: "0 auto", minHeight: "calc(100vh - 50px)" }}>
+ 
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", maxWidth: 1400, margin: "0 auto", minHeight: isMobile ? "auto" : "calc(100vh - 50px)" }}>
         {/* Left */}
-        <div style={{ flex: 1, padding: "14px 18px", overflowY: "auto", maxHeight: "calc(100vh - 50px)" }}>
+        <div style={{ flex: 1, padding: "14px 18px", overflowY: "auto", maxHeight: isMobile ? "50vh" : "calc(100vh - 50px)" }}>
           <input type="text" placeholder="Buscar estudios por nombre o sinónimo..." value={search} onChange={e => setSearch(e.target.value)}
             style={{ width: "100%", padding: "10px 14px", border: "2px solid #e0dce6", borderRadius: 8, fontSize: 13, background: "#fff", outline: "none", boxSizing: "border-box", fontFamily: font }}
             onFocus={e => e.target.style.borderColor = C.purpleLight} onBlur={e => e.target.style.borderColor = "#e0dce6"} />
@@ -245,9 +262,9 @@ export default function App() {
             })}
           </div>
         </div>
-
+ 
         {/* Right */}
-        <div style={{ width: 380, background: "#fff", borderLeft: "1px solid #e8e4ee", display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 50px)", overflowY: "auto" }}>
+        <div style={{ width: isMobile ? "100%" : 380, background: "#fff", borderLeft: isMobile ? "none" : "1px solid #e8e4ee", borderTop: isMobile ? "2px solid #e8e4ee" : "none", display: "flex", flexDirection: "column", maxHeight: isMobile ? "50vh" : "calc(100vh - 50px)", overflowY: "auto" }}>
           <div style={{ padding: "12px 16px", borderBottom: "1px solid #eee", background: "#faf8fc" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: C.purple }}>Estudios Seleccionados ({selected.length})</div>
           </div>
@@ -302,71 +319,75 @@ export default function App() {
           )}
         </div>
       </div>
-
+ 
       {/* ── QUOTE MODAL ── */}
       {showQuote && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setShowQuote(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: 440, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(40,12,76,0.3)" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setShowQuote(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? "20px 20px 0 0" : 20, width: isMobile ? "100%" : 540, maxHeight: isMobile ? "95vh" : "92vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(0,0,0,0.25)" }}>
             {/* Header */}
-            <div style={{ background: `linear-gradient(135deg, ${C.purple} 0%, ${C.purpleLight} 100%)`, padding: "20px 24px 16px", borderRadius: "16px 16px 0 0" }}>
-              <div><span style={{ fontSize: 28, fontWeight: 800, color: "#fff" }}>lab</span><span style={{ fontSize: 28, fontWeight: 800, color: C.orange }}>box</span></div>
-              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 500, marginTop: 2 }}>Estudios de Laboratorio · 100% a Domicilio</div>
+            <div style={{ background: `linear-gradient(135deg, ${C.purple} 0%, ${C.purpleLight} 100%)`, padding: isMobile ? "24px 20px 18px" : "28px 32px 20px", borderRadius: isMobile ? "20px 20px 0 0" : "20px 20px 0 0" }}>
+              <div><span style={{ fontSize: 32, fontWeight: 800, color: "#fff" }}>lab</span><span style={{ fontSize: 32, fontWeight: 800, color: C.orange }}>box</span></div>
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, fontWeight: 500, marginTop: 4 }}>Estudios de Laboratorio · 100% a Domicilio</div>
             </div>
-
-            <div style={{ padding: "16px 24px" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.purple, marginBottom: 12 }}>Resumen de Estudios</div>
+ 
+            <div style={{ padding: isMobile ? "20px 20px" : "24px 32px" }}>
+              <div style={{ fontSize: 17, fontWeight: 700, color: C.purple, marginBottom: 16 }}>Resumen de Estudios</div>
               {selected.map(s => (
-                <div key={s.n} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f3f1f6" }}>
-                  <span style={{ fontSize: 12, color: "#444", flex: 1 }}>{s.n}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: C.purple }}>{fmt(s.p)}</span>
+                <div key={s.n} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #f3f1f6", alignItems: "center" }}>
+                  <span style={{ fontSize: 14, color: "#333", flex: 1, paddingRight: 12 }}>{s.n}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: C.purple, whiteSpace: "nowrap" }}>{fmt(s.p)}</span>
                 </div>
               ))}
-
+ 
               {/* Smart pricing: only show subtotal+discount if socio */}
               {isSocio && (<>
-                <div style={{ background: "#f7f5fa", borderRadius: 8, padding: "10px 14px", marginTop: 12, display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 12, color: "#666", fontWeight: 500 }}>Subtotal:</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: C.purple }}>{fmt(subtotal)}</span>
+                <div style={{ background: "#f7f5fa", borderRadius: 10, padding: "14px 18px", marginTop: 16, display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 14, color: "#666", fontWeight: 500 }}>Subtotal:</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: C.purple }}>{fmt(subtotal)}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 14px", color: "#0B8A2E", fontSize: 11, fontWeight: 700 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 18px", color: "#0B8A2E", fontSize: 13, fontWeight: 700 }}>
                   <span>Descuento médico socio (15%):</span><span>-{fmt(discount)}</span>
                 </div>
               </>)}
-
+ 
               {/* Total */}
-              <div style={{ background: C.purple, borderRadius: 10, padding: "12px 14px", marginTop: isSocio ? 4 : 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 13, fontWeight: 600 }}>Total a pagar:</span>
-                <span style={{ color: "#fff", fontSize: 20, fontWeight: 800 }}>{fmt(final)}</span>
+              <div style={{ background: C.purple, borderRadius: 12, padding: "16px 18px", marginTop: isSocio ? 6 : 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 15, fontWeight: 600 }}>Total a pagar:</span>
+                <span style={{ color: "#fff", fontSize: 24, fontWeight: 800 }}>{fmt(final)}</span>
               </div>
-
-              {/* ── COMPETITOR COMPARISON — always visible when data exists ── */}
+ 
+              {/* ── COMPETITOR COMPARISON ── */}
               {hasComp && compTotal > final && (
-                <div style={{ background: "#FFF9C4", borderRadius: 10, padding: "12px 14px", marginTop: 10, border: "1px solid #F9E547" }}>
+                <div style={{ background: "#FFF9C4", borderRadius: 12, padding: "16px 18px", marginTop: 14, border: "1px solid #F9E547" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, color: "#333", fontWeight: 500 }}>En otros laboratorios pagarías:</span>
-                    <span style={{ fontSize: 14, color: "#666", textDecoration: "line-through", fontWeight: 600 }}>{fmt(compTotal)}</span>
+                    <span style={{ fontSize: 14, color: "#333", fontWeight: 500 }}>En otros laboratorios pagarías:</span>
+                    <span style={{ fontSize: 15, color: "#888", textDecoration: "line-through", fontWeight: 600 }}>{fmt(compTotal)}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: "#0B8A2E" }}>Tu ahorro con Labbox:</span>
-                    <span style={{ fontSize: 18, fontWeight: 800, color: "#0B8A2E" }}>{fmt(compTotal - final)}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: "#0B8A2E" }}>Tu ahorro con Labbox:</span>
+                    <span style={{ fontSize: 20, fontWeight: 800, color: "#0B8A2E" }}>{fmt(compTotal - final)}</span>
                   </div>
                 </div>
               )}
-
-              {/* Important Info */}
-              <div style={{ marginTop: 12, background: "#faf8fc", borderRadius: 8, padding: "14px 16px" }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 8 }}>Indicaciones Importantes</div>
-                {maxAy > 0 && <div style={{ fontSize: 13, color: "#333", marginBottom: 6 }}>⏰ <strong>Ayuno requerido:</strong> {maxAy} horas para algunos estudios</div>}
-                <div style={{ fontSize: 13, color: "#333", marginBottom: 6 }}>📦 <strong>Tiempo de entrega:</strong> {delSummary}</div>
-                <div style={{ fontSize: 13, color: "#333" }}>🏠 <strong>Servicio a domicilio incluido</strong> — Vamos a donde tú estés</div>
-                {specInd.map(s => <div key={s.n} style={{ fontSize: 12, color: "#555", marginTop: 6 }}>📋 <strong>{s.n}:</strong> {s.ind}</div>)}
+ 
+              {/* Indicaciones — consolidated */}
+              <div style={{ marginTop: 16, background: "#faf8fc", borderRadius: 12, padding: "18px 20px" }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.purple, marginBottom: 12 }}>Indicaciones Importantes</div>
+                {maxAy > 0 && <div style={{ fontSize: 14, color: "#333", marginBottom: 10, lineHeight: 1.5 }}>⏰ <strong>Ayuno requerido:</strong> {maxAy} horas para algunos estudios</div>}
+                <div style={{ fontSize: 14, color: "#333", marginBottom: 10, lineHeight: 1.5 }}>📦 <strong>Tiempo de entrega:</strong> {delSummary}</div>
+                <div style={{ fontSize: 14, color: "#333", marginBottom: consolidatedInd.length > 0 ? 10 : 0, lineHeight: 1.5 }}>🏠 <strong>Servicio a domicilio incluido</strong> — Vamos a donde tú estés</div>
+                {consolidatedInd.map(({ ind, names }, i) => (
+                  <div key={i} style={{ fontSize: 13, color: "#555", marginTop: 8, lineHeight: 1.5, paddingLeft: 2 }}>
+                    📋 <strong>{names.join(", ")}:</strong> {ind}
+                  </div>
+                ))}
               </div>
-
-              <div style={{ marginTop: 8, textAlign: "center", fontSize: 9, color: "#ccc", padding: "6px 0", borderTop: "1px solid #f0eef4" }}>
+ 
+              <div style={{ marginTop: 12, textAlign: "center", fontSize: 11, color: "#bbb", padding: "10px 0", borderTop: "1px solid #f0eef4" }}>
                 💳 Pagos a meses sin intereses · www.labbox.com.mx
               </div>
             </div>
-            <button onClick={() => setShowQuote(false)} style={{ position: "sticky", bottom: 0, width: "100%", padding: "10px", background: "#f5f3f8", color: "#999", border: "none", borderRadius: "0 0 16px 16px", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>Cerrar</button>
+            <button onClick={() => setShowQuote(false)} style={{ position: "sticky", bottom: 0, width: "100%", padding: "14px", background: "#f5f3f8", color: "#999", border: "none", borderRadius: isMobile ? 0 : "0 0 20px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}>Cerrar</button>
           </div>
         </div>
       )}
