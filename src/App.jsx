@@ -146,6 +146,7 @@ export default function App() {
   const [selected, setSelected] = useState([]);
   const [isSocio, setIsSocio] = useState(false);
   const [showQuote, setShowQuote] = useState(false);
+  const [showInd, setShowInd] = useState(false);
   const [catFilter, setCatFilter] = useState("Todas");
  
   const categories = useMemo(() => {
@@ -322,7 +323,7 @@ export default function App() {
  
       {/* ── QUOTE MODAL ── */}
       {showQuote && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setShowQuote(false)}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setShowQuote(false); setShowInd(false); }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? "20px 20px 0 0" : 20, width: isMobile ? "100%" : 540, maxHeight: isMobile ? "95vh" : "92vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(0,0,0,0.25)" }}>
             {/* Header */}
             <div style={{ background: `linear-gradient(135deg, ${C.purple} 0%, ${C.purpleLight} 100%)`, padding: isMobile ? "24px 20px 18px" : "28px 32px 20px", borderRadius: isMobile ? "20px 20px 0 0" : "20px 20px 0 0" }}>
@@ -339,7 +340,7 @@ export default function App() {
                 </div>
               ))}
  
-              {/* Smart pricing: only show subtotal+discount if socio */}
+              {/* Socio discount */}
               {isSocio && (<>
                 <div style={{ background: "#f7f5fa", borderRadius: 10, padding: "14px 18px", marginTop: 16, display: "flex", justifyContent: "space-between" }}>
                   <span style={{ fontSize: 14, color: "#666", fontWeight: 500 }}>Subtotal:</span>
@@ -356,7 +357,7 @@ export default function App() {
                 <span style={{ color: "#fff", fontSize: 24, fontWeight: 800 }}>{fmt(final)}</span>
               </div>
  
-              {/* ── COMPETITOR COMPARISON ── */}
+              {/* Competitor Comparison */}
               {hasComp && compTotal > final && (
                 <div style={{ background: "#FFF9C4", borderRadius: 12, padding: "16px 18px", marginTop: 14, border: "1px solid #F9E547" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -370,24 +371,46 @@ export default function App() {
                 </div>
               )}
  
-              {/* Indicaciones — consolidated */}
-              <div style={{ marginTop: 16, background: "#faf8fc", borderRadius: 12, padding: "18px 20px" }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: C.purple, marginBottom: 12 }}>Indicaciones Importantes</div>
-                {maxAy > 0 && <div style={{ fontSize: 14, color: "#333", marginBottom: 10, lineHeight: 1.5 }}>⏰ <strong>Ayuno requerido:</strong> {maxAy} horas para algunos estudios</div>}
-                <div style={{ fontSize: 14, color: "#333", marginBottom: 10, lineHeight: 1.5 }}>📦 <strong>Tiempo de entrega:</strong> {delSummary}</div>
-                <div style={{ fontSize: 14, color: "#333", marginBottom: consolidatedInd.length > 0 ? 10 : 0, lineHeight: 1.5 }}>🏠 <strong>Servicio a domicilio incluido</strong> — Vamos a donde tú estés</div>
-                {consolidatedInd.map(({ ind, names }, i) => (
-                  <div key={i} style={{ fontSize: 13, color: "#555", marginTop: 8, lineHeight: 1.5, paddingLeft: 2 }}>
-                    📋 <strong>{names.join(", ")}:</strong> {ind}
+              {/* Compact summary line: ayuno + entrega (always visible, one line each) */}
+              <div style={{ marginTop: 14, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {maxAy > 0 && (
+                  <div style={{ fontSize: 13, color: "#555", fontWeight: 600, background: "#fff3e0", padding: "6px 12px", borderRadius: 8 }}>
+                    ⏰ Ayuno: {maxAy} hrs
                   </div>
-                ))}
+                )}
+                <div style={{ fontSize: 13, color: "#555", fontWeight: 600, background: "#f0f7ed", padding: "6px 12px", borderRadius: 8 }}>
+                  🏠 Servicio a domicilio incluido
+                </div>
+              </div>
+ 
+              {/* ── COLLAPSIBLE INDICATIONS ── */}
+              <div style={{ marginTop: 14 }}>
+                <div
+                  onClick={() => setShowInd(!showInd)}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#faf8fc", borderRadius: showInd ? "12px 12px 0 0" : 12, cursor: "pointer", transition: "all 0.2s", border: "1px solid #ece8f2" }}
+                >
+                  <span style={{ fontSize: 14, fontWeight: 700, color: C.purple }}>Indicaciones y preparación</span>
+                  <span style={{ fontSize: 18, color: C.purpleLight, transform: showInd ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", lineHeight: 1 }}>▾</span>
+                </div>
+                {showInd && (
+                  <div style={{ padding: "16px 18px", background: "#faf8fc", borderRadius: "0 0 12px 12px", borderTop: "none", border: "1px solid #ece8f2", borderTopWidth: 0 }}>
+                    <div style={{ fontSize: 14, color: "#333", marginBottom: 10, lineHeight: 1.6 }}>📦 <strong>Tiempo de entrega:</strong> {delSummary}</div>
+                    {maxAy > 0 && <div style={{ fontSize: 14, color: "#333", marginBottom: 10, lineHeight: 1.6 }}>⏰ <strong>Ayuno requerido:</strong> {maxAy} horas para algunos estudios</div>}
+                    <div style={{ fontSize: 14, color: "#333", marginBottom: consolidatedInd.length > 0 ? 10 : 0, lineHeight: 1.6 }}>🏠 <strong>Servicio a domicilio incluido</strong> — Vamos a donde tú estés</div>
+                    {consolidatedInd.map(({ ind, names }, i) => (
+                      <div key={i} style={{ fontSize: 13, color: "#555", marginTop: 10, lineHeight: 1.6, paddingTop: 10, borderTop: "1px solid #ece8f2" }}>
+                        📋 <strong>{names.join(", ")}:</strong> {ind}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
  
               <div style={{ marginTop: 12, textAlign: "center", fontSize: 11, color: "#bbb", padding: "10px 0", borderTop: "1px solid #f0eef4" }}>
                 💳 Pagos a meses sin intereses · www.labbox.com.mx
               </div>
             </div>
-            <button onClick={() => setShowQuote(false)} style={{ position: "sticky", bottom: 0, width: "100%", padding: "14px", background: "#f5f3f8", color: "#999", border: "none", borderRadius: isMobile ? 0 : "0 0 20px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}>Cerrar</button>
+            <button onClick={() => { setShowQuote(false); setShowInd(false); }} style={{ position: "sticky", bottom: 0, width: "100%", padding: "14px", background: "#f5f3f8", color: "#999", border: "none", borderRadius: isMobile ? 0 : "0 0 20px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}>Cerrar</button>
           </div>
         </div>
       )}
