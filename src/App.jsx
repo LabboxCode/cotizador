@@ -321,6 +321,7 @@ const STUDIES_RAW = [
 {"n": "Vitamina E (Alfa tocoferol)", "p": 1300, "te": "17 (dias)", "ay": 8, "ind": "No ingerir multivitaminicos antes de la toma de muestra", "sin": "Vit. E, Alfa Tocoferol, Tocoferol", "cat": "Ginecologia,Embarazo,Nutricion,Gastroenterologia,Dermatologia,Endocrinologia", "co": 857.24, "ch": null, "mo": null, "sw": null, "ts": null},
 {"n": "Zinc En Sangre", "p": 900, "te": "8 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "Zinc", "cat": "Toxicologia", "co": 473.28, "ch": null, "mo": null, "sw": null, "ts": null},
 {"n": "Sarampion IgG", "p": 1000, "te": "2 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "Sarampion", "cat": null, "co": 360.76, "ch": null, "mo": null, "sw": null, "ts": null},
+{"n": "Perfil Bioquimico 32 Elementos", "p": 1500, "te": "1 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "QS 32", "cat": null, "co": 506.92, "ch": 715.55, "mo": null, "sw": null, "ts": null},
 {"n": "Quantose RI", "p": 3700, "te": "15 (dias)", "ay": 8, "ind": "Se requiere peso y talla de paciente", "sin": "", "cat": "", "co": 1787.56, "ch": null, "mo": null, "sw": null, "ts": null} 
 ];
 
