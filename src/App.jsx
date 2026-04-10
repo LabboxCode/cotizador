@@ -323,7 +323,7 @@ const STUDIES_RAW = [
 {"n": "Sarampion IgG", "p": 1000, "te": "2 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "Sarampion", "cat": null, "co": 360.76, "ch": null, "mo": null, "sw": null, "ts": null},
 {"n": "Quantose RI", "p": 3700, "te": "15 (dias)", "ay": 8, "ind": "Se requiere peso y talla de paciente", "sin": "", "cat": "", "co": 1787.56, "ch": null, "mo": null, "sw": null, "ts": null} 
 ];
- 
+
 const STUDIES = []; const seen = new Set();
 for (const s of STUDIES_RAW) { if (!seen.has(s.n)) { seen.add(s.n); STUDIES.push(s); } }
  
@@ -339,6 +339,7 @@ export default function App() {
   const [selected, setSelected] = useState([]);
   const [isSocio, setIsSocio] = useState(false);
   const [showQuote, setShowQuote] = useState(false);
+  const [showInd, setShowInd] = useState(false);
   const [catFilter, setCatFilter] = useState("Todas");
  
   const categories = useMemo(() => {
@@ -496,70 +497,88 @@ export default function App() {
         </div>
       </div>
  
-      {/* ── QUOTE MODAL ── */}
+      {/* ── QUOTE MODAL — Compact for screenshot + collapsible indications ── */}
       {showQuote && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setShowQuote(false)}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setShowQuote(false); setShowInd(false); }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: 440, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(40,12,76,0.3)" }}>
-            {/* Header */}
-            <div style={{ background: `linear-gradient(135deg, ${C.purple} 0%, ${C.purpleLight} 100%)`, padding: "20px 24px 16px", borderRadius: "16px 16px 0 0" }}>
-              <div><span style={{ fontSize: 28, fontWeight: 800, color: "#fff" }}>lab</span><span style={{ fontSize: 28, fontWeight: 800, color: C.orange }}>box</span></div>
-              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 500, marginTop: 2 }}>Estudios de Laboratorio · 100% a Domicilio</div>
+            {/* Header — compact */}
+            <div style={{ background: `linear-gradient(135deg, ${C.purple} 0%, ${C.purpleLight} 100%)`, padding: "18px 24px 14px", borderRadius: "16px 16px 0 0" }}>
+              <div><span style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>lab</span><span style={{ fontSize: 26, fontWeight: 800, color: C.orange }}>box</span></div>
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 500, marginTop: 1 }}>Estudios de Laboratorio · 100% a Domicilio</div>
             </div>
  
-            <div style={{ padding: "16px 24px" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.purple, marginBottom: 12 }}>Resumen de Estudios</div>
+            <div style={{ padding: "12px 24px 8px" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 8 }}>Resumen de Estudios</div>
               {selected.map(s => (
-                <div key={s.n} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f3f1f6" }}>
-                  <span style={{ fontSize: 12, color: "#444", flex: 1 }}>{s.n}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: C.purple }}>{fmt(s.p)}</span>
+                <div key={s.n} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #f3f1f6" }}>
+                  <span style={{ fontSize: 11, color: "#444", flex: 1 }}>{s.n}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.purple }}>{fmt(s.p)}</span>
                 </div>
               ))}
  
-              {/* Smart pricing: only show subtotal+discount if socio */}
+              {/* Subtotal + discount (only if socio) */}
               {isSocio && (<>
-                <div style={{ background: "#f7f5fa", borderRadius: 8, padding: "10px 14px", marginTop: 12, display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 12, color: "#666", fontWeight: 500 }}>Subtotal:</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: C.purple }}>{fmt(subtotal)}</span>
+                <div style={{ background: "#f7f5fa", borderRadius: 8, padding: "8px 12px", marginTop: 10, display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, color: "#666", fontWeight: 500 }}>Subtotal:</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>{fmt(subtotal)}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 14px", color: "#0B8A2E", fontSize: 11, fontWeight: 700 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 12px", color: "#0B8A2E", fontSize: 10, fontWeight: 700 }}>
                   <span>Descuento médico socio (15%):</span><span>-{fmt(discount)}</span>
                 </div>
               </>)}
  
               {/* Total */}
-              <div style={{ background: C.purple, borderRadius: 10, padding: "12px 14px", marginTop: isSocio ? 4 : 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 13, fontWeight: 600 }}>Total a pagar:</span>
+              <div style={{ background: C.purple, borderRadius: 10, padding: "10px 14px", marginTop: isSocio ? 4 : 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: 600 }}>Total a pagar:</span>
                 <span style={{ color: "#fff", fontSize: 20, fontWeight: 800 }}>{fmt(final)}</span>
               </div>
  
-              {/* ── COMPETITOR COMPARISON — always visible when data exists ── */}
+              {/* Competitor comparison */}
               {hasComp && compTotal > final && (
-                <div style={{ background: "#FFF9C4", borderRadius: 10, padding: "12px 14px", marginTop: 10, border: "1px solid #F9E547" }}>
+                <div style={{ background: "#FFF9C4", borderRadius: 10, padding: "10px 14px", marginTop: 8, border: "1px solid #F9E547" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, color: "#333", fontWeight: 500 }}>En otros laboratorios pagarías:</span>
-                    <span style={{ fontSize: 14, color: "#666", textDecoration: "line-through", fontWeight: 600 }}>{fmt(compTotal)}</span>
+                    <span style={{ fontSize: 11, color: "#333", fontWeight: 500 }}>En otros laboratorios pagarías:</span>
+                    <span style={{ fontSize: 13, color: "#666", textDecoration: "line-through", fontWeight: 600 }}>{fmt(compTotal)}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: "#0B8A2E" }}>Tu ahorro con Labbox:</span>
-                    <span style={{ fontSize: 18, fontWeight: 800, color: "#0B8A2E" }}>{fmt(compTotal - final)}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#0B8A2E" }}>Tu ahorro con Labbox:</span>
+                    <span style={{ fontSize: 17, fontWeight: 800, color: "#0B8A2E" }}>{fmt(compTotal - final)}</span>
                   </div>
                 </div>
               )}
  
-              {/* Important Info */}
-              <div style={{ marginTop: 12, background: "#faf8fc", borderRadius: 8, padding: "14px 16px" }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 8 }}>Indicaciones Importantes</div>
-                {maxAy > 0 && <div style={{ fontSize: 13, color: "#333", marginBottom: 6 }}>⏰ <strong>Ayuno requerido:</strong> {maxAy} horas para algunos estudios</div>}
-                <div style={{ fontSize: 13, color: "#333", marginBottom: 6 }}>📦 <strong>Tiempo de entrega:</strong> {delSummary}</div>
-                <div style={{ fontSize: 13, color: "#333" }}>🏠 <strong>Servicio a domicilio incluido</strong> — Vamos a donde tú estés</div>
-                {specInd.map(s => <div key={s.n} style={{ fontSize: 12, color: "#555", marginTop: 6 }}>📋 <strong>{s.n}:</strong> {s.ind}</div>)}
+              {/* Compact badges — fits in screenshot */}
+              <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                {maxAy > 0 && <div style={{ display: "flex", alignItems: "center", gap: 4, background: "#fff3e0", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: C.orangeDark }}>⏰ Ayuno: {maxAy} hrs</div>}
+                <div style={{ display: "flex", alignItems: "center", gap: 4, background: "#e8f5e9", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#2e7d32" }}>🏠 Domicilio incluido</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, background: "#e3f2fd", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#1565c0" }}>📦 {(() => { const tt = selected.map(s => parseTe(s.te)).filter(d => d); return tt.length ? `${Math.min(...tt)}-${Math.max(...tt)} días` : "Consultar"; })()}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, background: "#f3e5f5", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#7b1fa2" }}>💳 MSI disponibles</div>
               </div>
  
-              <div style={{ marginTop: 8, textAlign: "center", fontSize: 9, color: "#ccc", padding: "6px 0", borderTop: "1px solid #f0eef4" }}>
-                💳 Pagos a meses sin intereses · www.labbox.com.mx
+              {/* ── COLLAPSIBLE INDICATIONS ── */}
+              {specInd.length > 0 && (
+                <div style={{ marginTop: 10, borderTop: "1px solid #f0eef4" }}>
+                  <div onClick={() => setShowInd(!showInd)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0 4px", cursor: "pointer" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.purple }}>📋 Indicaciones y preparación ({specInd.length})</span>
+                    <span style={{ fontSize: 16, color: C.purpleLight, transition: "transform 0.2s", transform: showInd ? "rotate(180deg)" : "rotate(0)" }}>▾</span>
+                  </div>
+                  {showInd && (
+                    <div style={{ background: "#faf8fc", borderRadius: 8, padding: "10px 12px", marginBottom: 4 }}>
+                      {specInd.map(s => (
+                        <div key={s.n} style={{ fontSize: 11, color: "#555", marginBottom: 6, lineHeight: 1.4 }}>
+                          <strong style={{ color: C.purple }}>{s.n}:</strong> {s.ind}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+ 
+              <div style={{ marginTop: 6, textAlign: "center", fontSize: 9, color: "#ccc", padding: "4px 0" }}>
+                www.labbox.com.mx
               </div>
             </div>
-            <button onClick={() => setShowQuote(false)} style={{ position: "sticky", bottom: 0, width: "100%", padding: "10px", background: "#f5f3f8", color: "#999", border: "none", borderRadius: "0 0 16px 16px", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>Cerrar</button>
+            <button onClick={() => { setShowQuote(false); setShowInd(false); }} style={{ position: "sticky", bottom: 0, width: "100%", padding: "10px", background: "#f5f3f8", color: "#999", border: "none", borderRadius: "0 0 16px 16px", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>Cerrar</button>
           </div>
         </div>
       )}
