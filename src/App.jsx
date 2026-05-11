@@ -71,7 +71,7 @@ const STUDIES_RAW = [
 {"n": "Antigeno CA 15-3", "p": 900, "te": "1 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "CA 15-3", "cat": "Ginecologia", "co": 294.64, "ch": null, "mo": null, "sw": null, "ts": null},
 {"n": "Antigeno CA 72-4", "p": 800, "te": "3 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "CA 72-4", "cat": "Ginecologia", "co": 495, "ch": null, "mo": null, "sw": null, "ts": null},
 {"n": "Antigeno CA-125", "p": 600, "te": "1 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "CA 125", "cat": "Ginecologia", "co": 290, "ch": null, "mo": null, "sw": null, "ts": null},
-{"n": "Antigeno CA19-9", "p": 800, "te": "1 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "CA19-9", "cat": "Ginecologia", "co": 288.84, "ch": null, "mo": null, "sw": null, "ts": null},
+{"n": "Antigeno CA 19-9", "p": 800, "te": "1 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "CA19-9", "cat": "Ginecologia", "co": 288.84, "ch": null, "mo": null, "sw": null, "ts": null},
 {"n": "Antigeno Carcino Embrionario", "p": 600, "te": "12 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "CEA", "cat": "Ginecologia", "co": 180.96, "ch": null, "mo": null, "sw": null, "ts": null},
 {"n": "Antigeno de Helicobacter Pylori en Heces", "p": 1900, "te": "1 (dias)", "ay": null, "ind": "Recolectar una muestra de materia fecal del tamaño de una nuez en un recipiente estéril. No muestra liquida", "sin": "Helicobacter pylori en heces", "cat": "Gastroenterologia", "co": 715, "ch": null, "mo": null, "sw": null, "ts": null},
 {"n": "Antigeno de Histocompatibilidad HLA-B27", "p": 1500, "te": "7 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "Detección Antígeno HLA B-27", "cat": "Reumatologia", "co": 909.44, "ch": null, "mo": null, "sw": null, "ts": null},
@@ -327,7 +327,8 @@ const STUDIES_RAW = [
 {"n": "Inmunoglobulina A", "p": 600, "te": "1 (dias)", "ay": 4, "ind": "No requiere indicación especial", "sin": "IgA Total, prueba de celiaquia, celiaca, Perfil celiaca", "cat": null, "co": 212.28, "ch": null, "mo": null, "sw": null, "ts": null},
 {"n": "Anticuerpos Anti Endomisio IgA", "p": 1700, "te": "12 (dias)", "ay": 4, "ind": "No requiere indicación especial", "sin": "prueba de celiaquia, celiaca, Perfil celiaca", "cat": null, "co": 779.52, "ch": null, "mo": null, "sw": null, "ts": null},
 {"n": "Anticuerpos Anti Gliadinas IgA IgG", "p": 2000, "te": "4 (dias)", "ay": 4, "ind": "No requiere indicación especial", "sin": "prueba de celiaquia, celiaca, Perfil celiaca", "cat": null, "co": 847.96, "ch": null, "mo": null, "sw": null, "ts": null},
-{"n": "Anticuerpos Anti Treponema Totales", "p": 600, "te": "2 (dias)", "ay": 0, "ind": "No requiere indicación especial", "sin": "Storch", "cat": null, "co": 251.72, "ch": null, "mo": null, "sw": null, "ts": null}, 
+{"n": "Anticuerpos Anti Treponema Totales", "p": 600, "te": "2 (dias)", "ay": 0, "ind": "No requiere indicación especial", "sin": "Storch", "cat": null, "co": 251.72, "ch": null, "mo": null, "sw": null, "ts": null},
+{"n": "Perfil Bioquimico 32 Elementos", "p": 1200, "te": "1 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "PB32", "cat": null, "co": 506.92, "ch": 715.55, "mo": null, "sw": null, "ts": null}, 
 {"n": "Quantose RI", "p": 3700, "te": "15 (dias)", "ay": 8, "ind": "Se requiere peso y talla de paciente", "sin": "", "cat": "", "co": 1787.56, "ch": null, "mo": null, "sw": null, "ts": null} 
 ];
 
