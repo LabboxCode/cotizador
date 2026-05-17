@@ -645,7 +645,7 @@ export default function App() {
 
             <div style={{ padding: "12px 24px 8px" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 8 }}>Resumen de Estudios</div>
-              {selected.map(s => (
+              {selected.map(s => {
                 const dInfo = deliveryInfo.find(d => d.n === s.n);
                 return (
                   <div key={s.n} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "4px 0", borderBottom: "1px solid #f3f1f6" }}>
