@@ -646,11 +646,17 @@ export default function App() {
             <div style={{ padding: "12px 24px 8px" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 8 }}>Resumen de Estudios</div>
               {selected.map(s => (
-                <div key={s.n} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #f3f1f6" }}>
-                  <span style={{ fontSize: 11, color: "#444", flex: 1 }}>{s.n}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: C.purple }}>{fmt(s.p)}</span>
-                </div>
-              ))}
+                const dInfo = deliveryInfo.find(d => d.n === s.n);
+                return (
+                  <div key={s.n} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "4px 0", borderBottom: "1px solid #f3f1f6" }}>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: 11, color: "#444" }}>{s.n}</span>
+                      {dInfo && dInfo.dateStr && <div style={{ fontSize: 9, color: "#999", marginTop: 1 }}>📦 {dInfo.dateStr}</div>}
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: C.purple, whiteSpace: "nowrap", marginLeft: 8 }}>{fmt(s.p)}</span>
+                  </div>
+                );
+              })}
 
               {isSocio && (<>
                 <div style={{ background: "#f7f5fa", borderRadius: 8, padding: "8px 12px", marginTop: 10, display: "flex", justifyContent: "space-between" }}>
