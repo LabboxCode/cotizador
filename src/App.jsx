@@ -336,14 +336,14 @@ const STUDIES_RAW = [
 
 const STUDIES = []; const seen = new Set();
 for (const s of STUDIES_RAW) { if (!seen.has(s.n)) { seen.add(s.n); STUDIES.push(s); } }
-
+ 
 function parseTe(te) { if (!te || te === "NA") return null; const m = te.match(/(\d+)/); return m ? parseInt(m[1]) : null; }
 function roundTo50(v) { return Math.round(v / 50) * 50; }
 function fmt(n) { return "$" + Number(n).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-
+ 
 const DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 const MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
-
+ 
 function addBusinessDays(fromDate, days) {
   if (days <= 0) return fromDate;
   const d = new Date(fromDate);
@@ -351,22 +351,26 @@ function addBusinessDays(fromDate, days) {
   while (added < days) {
     d.setDate(d.getDate() + 1);
     const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) added++; // skip weekends
+    if (dow !== 0 && dow !== 6) added++;
   }
   return d;
 }
-
-function fmtDeliveryDate(days) {
+ 
+function fmtDeliveryDate(days, baseDate) {
   if (days === null) return null;
-  if (days <= 1) return "hoy por la tarde/noche";
-  const target = addBusinessDays(new Date(), days);
+  const base = baseDate ? new Date(baseDate + "T12:00:00") : new Date();
+  const today = new Date().toISOString().split('T')[0];
+  const isToday = !baseDate || baseDate === today;
+  if (days <= 1 && isToday) return "hoy por la tarde/noche";
+  if (days <= 1) { const d = new Date(base); const dow = DIAS_SEMANA[d.getDay()]; return `mismo día (${dow} ${d.getDate()} ${MESES[d.getMonth()]})`; }
+  const target = addBusinessDays(base, days);
   const dow = DIAS_SEMANA[target.getDay()];
   return `${dow} ${target.getDate()} ${MESES[target.getMonth()]}`;
 }
-
+ 
 const C = { purple: "#280C4C", purpleLight: "#7535CA", orange: "#FC7A1D", teal: "#00EBD5", orangeDark: "#954003" };
 const font = "'Montserrat', sans-serif";
-
+ 
 export default function App() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState([]);
@@ -374,23 +378,23 @@ export default function App() {
   const [showQuote, setShowQuote] = useState(false);
   const [showInd, setShowInd] = useState(false);
   const [showCart, setShowCart] = useState(false);
+  const [studyDate, setStudyDate] = useState(new Date().toISOString().split('T')[0]);
   const [catFilter, setCatFilter] = useState("Todas");
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && window.innerWidth < 768);
-
-  // Responsive listener
+ 
   useState(() => {
     if (typeof window === "undefined") return;
     const handler = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
   });
-
+ 
   const categories = useMemo(() => {
     const cats = new Set();
     STUDIES.forEach(s => { if (s.cat) s.cat.split(",").forEach(c => cats.add(c.trim())); });
     return ["Todas", ...Array.from(cats).filter(Boolean).sort()];
   }, []);
-
+ 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     return STUDIES.filter(s => {
@@ -402,10 +406,10 @@ export default function App() {
       return n.includes(q) || sy.includes(q);
     });
   }, [search, catFilter]);
-
+ 
   const add = (s) => { if (!selected.find(x => x.n === s.n)) setSelected([...selected, s]); };
   const rem = (n) => setSelected(selected.filter(s => s.n !== n));
-
+ 
   const subtotal = selected.reduce((s, x) => s + x.p, 0);
   const totalCost = selected.reduce((s, x) => s + (x.co || 0), 0);
   const compTotal = selected.reduce((s, x) => {
@@ -418,42 +422,40 @@ export default function App() {
   const final = isSocio ? totalDisc : subtotal;
   const margin = final > 0 ? ((final - totalCost) / final * 100) : 0;
   const profit = final - totalCost;
-
-  // Delivery summary with actual dates
+ 
   const deliveryInfo = useMemo(() => {
     if (!selected.length) return [];
     return selected.map(s => {
       const days = parseTe(s.te);
-      return { n: s.n, days, dateStr: fmtDeliveryDate(days) };
+      return { n: s.n, days, dateStr: fmtDeliveryDate(days, studyDate) };
     });
-  }, [selected]);
-
+  }, [selected, studyDate]);
+ 
   const delSummary = useMemo(() => {
     if (!deliveryInfo.length) return "";
     const withDays = deliveryInfo.filter(d => d.days !== null);
     if (!withDays.length) return "Consultar tiempo de entrega";
     const allSame = withDays.every(d => d.days === withDays[0].days);
     if (allSame) {
-      return withDays[0].days <= 1
+      return withDays[0].days <= 1 && studyDate === new Date().toISOString().split('T')[0]
         ? "Resultados hoy por la tarde/noche"
         : `Resultados el ${withDays[0].dateStr}`;
     }
     const mn = Math.min(...withDays.map(d => d.days));
     const mx = Math.max(...withDays.map(d => d.days));
-    const fastest = fmtDeliveryDate(mn);
-    const slowest = fmtDeliveryDate(mx);
-    return mn <= 1 ? `Mayoría hoy, algunos hasta el ${slowest}` : `Entre ${fastest} y ${slowest}`;
-  }, [deliveryInfo]);
-
+    const fastest = fmtDeliveryDate(mn, studyDate);
+    const slowest = fmtDeliveryDate(mx, studyDate);
+    const isToday = studyDate === new Date().toISOString().split('T')[0];
+    return mn <= 1 && isToday ? `Mayoría hoy, algunos hasta el ${slowest}` : `Entre ${fastest} y ${slowest}`;
+  }, [deliveryInfo, studyDate]);
+ 
   const specInd = useMemo(() => selected.filter(s => s.ind && !s.ind.includes("No requiere") && s.ind.trim()), [selected]);
   const maxAy = useMemo(() => { const a = selected.map(s => s.ay).filter(a => a > 0); return a.length ? Math.max(...a) : 0; }, [selected]);
-
-  // ─── RENDER ───
+ 
   return (
     <div style={{ fontFamily: font, background: "#f7f5fa", minHeight: "100vh" }}>
       <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-
-      {/* Header */}
+ 
       <div style={{ background: `linear-gradient(135deg, ${C.purple} 0%, ${C.purpleLight} 100%)`, padding: isMobile ? "10px 16px" : "14px 24px", display: "flex", alignItems: "center", gap: 8, position: "sticky", top: 0, zIndex: 50 }}>
         <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: "#fff", letterSpacing: -0.5 }}>lab</span>
         <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: C.orange, letterSpacing: -0.5, marginLeft: -6 }}>box</span>
@@ -467,11 +469,9 @@ export default function App() {
           </label>
         </div>
       </div>
-
-      {/* ─── MAIN LAYOUT ─── */}
+ 
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", maxWidth: 1400, margin: "0 auto", minHeight: isMobile ? "auto" : "calc(100vh - 50px)" }}>
-
-        {/* ─── LEFT: Study List ─── */}
+ 
         <div style={{ flex: 1, padding: isMobile ? "10px 12px" : "14px 18px", overflowY: isMobile ? "visible" : "auto", maxHeight: isMobile ? "none" : "calc(100vh - 50px)", paddingBottom: isMobile && selected.length ? 80 : 14 }}>
           <input type="text" placeholder="Buscar estudios..." value={search} onChange={e => setSearch(e.target.value)}
             style={{ width: "100%", padding: isMobile ? "10px 12px" : "10px 14px", border: "2px solid #e0dce6", borderRadius: 8, fontSize: 14, background: "#fff", outline: "none", boxSizing: "border-box", fontFamily: font }}
@@ -483,7 +483,7 @@ export default function App() {
           </div>
           <div style={{ fontSize: 10, color: "#aaa", marginBottom: 4 }}>{filtered.length} estudios</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {filtered.slice(0, isMobile ? 40 : 60).map(s => {
+            {filtered.map(s => {
               const sel = selected.some(x => x.n === s.n);
               return (
                 <div key={s.n} onClick={() => !sel && add(s)} style={{ padding: isMobile ? "10px 12px" : "8px 10px", background: sel ? "#f3eef9" : "#fff", borderRadius: 8, border: sel ? `2px solid ${C.purpleLight}` : "1px solid #eee", cursor: sel ? "default" : "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", opacity: sel ? 0.4 : 1, transition: "all 0.12s" }}>
@@ -500,11 +500,9 @@ export default function App() {
             })}
           </div>
         </div>
-
-        {/* ─── RIGHT PANEL (desktop) / BOTTOM SHEET (mobile) ─── */}
+ 
         {isMobile ? (
           <>
-            {/* Floating cart button */}
             {selected.length > 0 && !showCart && (
               <div onClick={() => setShowCart(true)} style={{ position: "fixed", bottom: 16, left: 16, right: 16, background: `linear-gradient(135deg, ${C.purple}, ${C.purpleLight})`, borderRadius: 14, padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", zIndex: 40, boxShadow: "0 6px 24px rgba(40,12,76,0.35)", cursor: "pointer" }}>
                 <div>
@@ -514,8 +512,7 @@ export default function App() {
                 <div style={{ color: "#fff", fontSize: 18, fontWeight: 800 }}>{fmt(final)}</div>
               </div>
             )}
-
-            {/* Bottom sheet */}
+ 
             {showCart && (
               <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 100, display: "flex", alignItems: "flex-end" }} onClick={() => setShowCart(false)}>
                 <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: "20px 20px 0 0", width: "100%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 -4px 20px rgba(0,0,0,0.15)" }}>
@@ -550,11 +547,11 @@ export default function App() {
                         <div style={{ fontSize: 12, fontWeight: 700, color: "#1b7a3a" }}>Ahorro: {fmt(compTotal - final)}</div>
                       </div>
                     )}
-                    <div style={{ marginTop: 6, fontSize: 11, color: "#666" }}>📦 {delSummary}</div>
+                    <div style={{ marginTop: 6, fontSize: 11, color: "#666", display: "flex", alignItems: "center", gap: 6 }}>📅 <input type="date" value={studyDate} onChange={e => setStudyDate(e.target.value)} style={{ border: "1px solid #ddd", borderRadius: 4, padding: "3px 6px", fontSize: 11, fontFamily: font, color: C.purple }} /></div>
+                    <div style={{ marginTop: 4, fontSize: 11, color: "#666" }}>📦 {delSummary}</div>
                     {maxAy > 0 && <div style={{ marginTop: 2, fontSize: 11, color: C.orangeDark, fontWeight: 600 }}>⏰ Ayuno: {maxAy} horas</div>}
                     <button onClick={() => { setShowCart(false); setShowQuote(true); }} style={{ width: "100%", padding: "12px", background: `linear-gradient(135deg, ${C.orangeDark}, ${C.orange})`, color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 10, fontFamily: font }}>Ver Cotización para Paciente</button>
                   </div>
-                  {/* Internal (mobile) */}
                   <div style={{ padding: "8px 18px 14px", background: "#faf8fc", borderTop: "1px dashed #e0dce6" }}>
                     <div style={{ fontSize: 9, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Análisis Interno</div>
                     <div style={{ display: "flex", gap: 6 }}>
@@ -571,7 +568,6 @@ export default function App() {
             )}
           </>
         ) : (
-          /* ─── DESKTOP RIGHT PANEL ─── */
           <div style={{ width: 380, background: "#fff", borderLeft: "1px solid #e8e4ee", display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 50px)", overflowY: "auto" }}>
             <div style={{ padding: "12px 16px", borderBottom: "1px solid #eee", background: "#faf8fc" }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: C.purple }}>Estudios Seleccionados ({selected.length})</div>
@@ -605,11 +601,11 @@ export default function App() {
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#1b7a3a" }}>Ahorro: {fmt(compTotal - final)}</div>
                     </div>
                   )}
-                  <div style={{ marginTop: 8, fontSize: 10, color: "#666" }}>📦 <strong>Entrega:</strong> {delSummary}</div>
+                  <div style={{ marginTop: 8, fontSize: 10, color: "#666", display: "flex", alignItems: "center", gap: 6 }}>📅 <strong>Fecha:</strong> <input type="date" value={studyDate} onChange={e => setStudyDate(e.target.value)} style={{ border: "1px solid #ddd", borderRadius: 4, padding: "2px 4px", fontSize: 10, fontFamily: font, color: C.purple }} /></div>
+                  <div style={{ marginTop: 4, fontSize: 10, color: "#666" }}>📦 <strong>Entrega:</strong> {delSummary}</div>
                   {maxAy > 0 && <div style={{ marginTop: 2, fontSize: 10, color: C.orangeDark, fontWeight: 600 }}>⏰ Ayuno: {maxAy} horas</div>}
                   <button onClick={() => setShowQuote(true)} style={{ width: "100%", padding: "10px", background: `linear-gradient(135deg, ${C.orangeDark}, ${C.orange})`, color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 12, fontFamily: font }}>Ver Cotización para Paciente</button>
                 </div>
-                {/* Internal */}
                 <div style={{ padding: "8px 16px", background: "#faf8fc", borderTop: "1px dashed #e0dce6" }}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Análisis Interno</div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -634,17 +630,15 @@ export default function App() {
           </div>
         )}
       </div>
-
-      {/* ── QUOTE MODAL — Compact for screenshot + collapsible indications ── */}
+ 
       {showQuote && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setShowQuote(false); setShowInd(false); }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? "20px 20px 0 0" : 16, width: isMobile ? "100%" : 440, maxHeight: isMobile ? "95vh" : "92vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(40,12,76,0.3)" }}>
-            {/* Header */}
             <div style={{ background: `linear-gradient(135deg, ${C.purple} 0%, ${C.purpleLight} 100%)`, padding: "18px 24px 14px", borderRadius: isMobile ? "20px 20px 0 0" : "16px 16px 0 0" }}>
               <div><span style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>lab</span><span style={{ fontSize: 26, fontWeight: 800, color: C.orange }}>box</span></div>
               <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 500, marginTop: 1 }}>Estudios de Laboratorio · 100% a Domicilio</div>
             </div>
-
+ 
             <div style={{ padding: "12px 24px 8px" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 8 }}>Resumen de Estudios</div>
               {selected.map(s => {
@@ -659,7 +653,7 @@ export default function App() {
                   </div>
                 );
               })}
-
+ 
               {isSocio && (<>
                 <div style={{ background: "#f7f5fa", borderRadius: 8, padding: "8px 12px", marginTop: 10, display: "flex", justifyContent: "space-between" }}>
                   <span style={{ fontSize: 11, color: "#666", fontWeight: 500 }}>Subtotal:</span>
@@ -669,12 +663,12 @@ export default function App() {
                   <span>Descuento médico socio (15%):</span><span>-{fmt(discount)}</span>
                 </div>
               </>)}
-
+ 
               <div style={{ background: C.purple, borderRadius: 10, padding: "10px 14px", marginTop: isSocio ? 4 : 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: 600 }}>Total a pagar:</span>
                 <span style={{ color: "#fff", fontSize: 20, fontWeight: 800 }}>{fmt(final)}</span>
               </div>
-
+ 
               {hasComp && compTotal > final && (
                 <div style={{ background: "#FFF9C4", borderRadius: 10, padding: "10px 14px", marginTop: 8, border: "1px solid #F9E547" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -687,16 +681,14 @@ export default function App() {
                   </div>
                 </div>
               )}
-
-              {/* Badges */}
+ 
               <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                 {maxAy > 0 && <div style={{ background: "#fff3e0", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: C.orangeDark }}>⏰ Ayuno: {maxAy} hrs</div>}
                 <div style={{ background: "#e8f5e9", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#2e7d32" }}>🏠 Domicilio incluido</div>
                 <div style={{ background: "#e3f2fd", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#1565c0" }}>📦 {delSummary}</div>
                 <div style={{ background: "#f3e5f5", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#7b1fa2" }}>💳 MSI disponibles</div>
               </div>
-
-              {/* ── COLLAPSIBLE INDICATIONS ── */}
+ 
               {specInd.length > 0 && (
                 <div style={{ marginTop: 10, borderTop: "1px solid #f0eef4" }}>
                   <div onClick={() => setShowInd(!showInd)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0 4px", cursor: "pointer" }}>
@@ -714,7 +706,7 @@ export default function App() {
                   )}
                 </div>
               )}
-
+ 
               <div style={{ marginTop: 6, textAlign: "center", fontSize: 9, color: "#ccc", padding: "4px 0" }}>www.labbox.com.mx</div>
             </div>
             <button onClick={() => { setShowQuote(false); setShowInd(false); }} style={{ position: "sticky", bottom: 0, width: "100%", padding: "10px", background: "#f5f3f8", color: "#999", border: "none", borderRadius: isMobile ? 0 : "0 0 16px 16px", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>Cerrar</button>
