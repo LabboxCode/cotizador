@@ -333,6 +333,7 @@ const STUDIES_RAW = [
 {"n": "Perfil Bioquimico 32 Elementos", "p": 1200, "te": "1 (dias)", "ay": 8, "ind": "No requiere indicación especial", "sin": "PB32", "cat": null, "co": 506.92, "ch": 715.55, "mo": null, "sw": null, "ts": null},
 {"n": "PCR Carga Viral de Citomegalovirus (CMV)", "p": 6000, "te": "4 (dias)", "ay": 0, "ind": "No requiere indicación especial", "sin": null, "cat": null, "co": 2187.76, "ch": null, "mo": null, "sw": null, "ts": null},
 {"n": "PCR Carga viral de Epstein Barr (EBV)", "p": 8000, "te": "7 (dias)", "ay": 0, "ind": "No requiere indicación especial", "sin": null, "cat": null, "co": 3123.88, "ch": null, "mo": null, "sw": null, "ts": null},
+{"n": "Lipoproteina A", "p": 1700, "te": "2 (dias)", "ay": 0, "ind": "No requiere indicación especial", "sin": null, "cat": null, "co": 660.04, "ch": null, "mo": null, "sw": null, "ts": null}, 
 {"n": "Quantose RI", "p": 3700, "te": "15 (dias)", "ay": 8, "ind": "Se requiere peso y talla de paciente", "sin": "", "cat": "", "co": 1787.56, "ch": null, "mo": null, "sw": null, "ts": null} 
 ];
 
