@@ -421,6 +421,22 @@ function calcOrthinCost(selected) {
   return totalCost;
 }
 
+// ── MONDAY.COM API ──
+const MONDAY_BOARD_DIARIO = 18391336187;
+const MONDAY_BOARD_ESTUDIOS = 6714927670;
+
+async function mondayApi(token, query) {
+  const res = await fetch("https://api.monday.com/v2", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": token, "API-Version": "2024-10" },
+    body: JSON.stringify({ query })
+  });
+  const data = await res.json();
+  if (data.errors) throw new Error(data.errors[0].message);
+  if (data.error_message) throw new Error(data.error_message);
+  return data.data;
+}
+
 export default function App() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState([]);
@@ -429,6 +445,72 @@ export default function App() {
   const [showInd, setShowInd] = useState(false);
   const [showCart, setShowCart] = useState(false);
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && window.innerWidth < 768);
+  const [showMonday, setShowMonday] = useState(false);
+  const [mToken, setMToken] = useState(() => { try { return localStorage.getItem("lbx_mt") || ""; } catch { return ""; } });
+  const [mGroups, setMGroups] = useState([]);
+  const [mGroupId, setMGroupId] = useState("");
+  const [mName, setMName] = useState("");
+  const [mLoading, setMLoading] = useState(false);
+  const [mResult, setMResult] = useState(null);
+
+  const openMonday = async () => {
+    setShowMonday(true); setMResult(null); setMName("");
+    if (mToken) {
+      try {
+        const d = await mondayApi(mToken, `query { boards(ids: [${MONDAY_BOARD_DIARIO}]) { groups { id title } } }`);
+        setMGroups(d.boards[0].groups);
+        if (!mGroupId && d.boards[0].groups.length) setMGroupId(d.boards[0].groups[0].id);
+      } catch { setMResult({ error: "Token inválido. Revisa tu API token de Monday.com" }); }
+    }
+  };
+
+  const saveToken = async () => {
+    try { localStorage.setItem("lbx_mt", mToken); } catch {}
+    try {
+      const d = await mondayApi(mToken, `query { boards(ids: [${MONDAY_BOARD_DIARIO}]) { groups { id title } } }`);
+      setMGroups(d.boards[0].groups);
+      if (d.boards[0].groups.length) setMGroupId(d.boards[0].groups[0].id);
+      setMResult(null);
+    } catch { setMResult({ error: "Token inválido" }); }
+  };
+
+  const sendToMonday = async () => {
+    if (!mName.trim() || !mGroupId) return;
+    setMLoading(true);
+    try {
+      // 1. Fetch study IDs from Estudios Clinicos 2024
+      const sd = await mondayApi(mToken, `query { boards(ids: [${MONDAY_BOARD_ESTUDIOS}]) { items_page(limit: 500) { cursor items { id name } } } }`);
+      let allItems = sd.boards[0].items_page.items;
+      let cursor = sd.boards[0].items_page.cursor;
+      while (cursor) {
+        const nd = await mondayApi(mToken, `query { next_items_page(limit: 500, cursor: "${cursor}") { cursor items { id name } } }`);
+        allItems = [...allItems, ...nd.next_items_page.items];
+        cursor = nd.next_items_page.cursor;
+      }
+      const nameMap = {};
+      allItems.forEach(i => { nameMap[i.name.toLowerCase().trim()] = parseInt(i.id); });
+
+      // 2. Match selected studies
+      const studyNames = selected.map(s => s.n);
+      const studyIds = selected.map(s => nameMap[s.n.toLowerCase().trim()]).filter(Boolean);
+
+      // 3. Build column values
+      const cv = JSON.stringify({
+        dropdown0__1: { labels: studyNames },
+        conectar_tableros__1: { item_ids: studyIds },
+        cost: totalFinal.toString()
+      }).replace(/"/g, '\\"');
+
+      // 4. Create item
+      const result = await mondayApi(mToken, `mutation { create_item(board_id: ${MONDAY_BOARD_DIARIO}, group_id: "${mGroupId}", item_name: "${mName.replace(/"/g, '\\"')}", column_values: "${cv}", create_labels_if_missing: true) { id } }`);
+
+      const itemId = result.create_item.id;
+      setMResult({ success: true, url: `https://deltalabbox.monday.com/boards/${MONDAY_BOARD_DIARIO}/pulses/${itemId}` });
+    } catch (e) {
+      setMResult({ error: e.message || "Error al crear elemento" });
+    }
+    setMLoading(false);
+  };
 
   useState(() => {
     if (typeof window === "undefined") return;
@@ -590,6 +672,7 @@ export default function App() {
                         </div>
                       ))}
                     </div>
+                    <button onClick={() => { setShowCart(false); openMonday(); }} style={{ width: "100%", padding: "8px", background: "#fff", color: C.purple, border: `1px solid ${C.purpleLight}`, borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", marginTop: 6, fontFamily: font }}>📋 Enviar a Monday.com</button>
                   </div>
                 </div>
               </div>
@@ -646,6 +729,7 @@ export default function App() {
                       </div>
                     ); })}
                   </div>
+                  <button onClick={openMonday} style={{ width: "100%", padding: "8px", background: "#fff", color: C.purple, border: `1px solid ${C.purpleLight}`, borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", marginTop: 8, fontFamily: font }}>📋 Enviar a Monday.com</button>
                 </div>
               </>
             )}
@@ -746,6 +830,72 @@ export default function App() {
               <div style={{ marginTop: 6, textAlign: "center", fontSize: 9, color: "#ccc", padding: "4px 0" }}>www.labbox.com.mx</div>
             </div>
             <button onClick={() => { setShowQuote(false); setShowInd(false); }} style={{ position: "sticky", bottom: 0, width: "100%", padding: "10px", background: "#f5f3f8", color: "#999", border: "none", borderRadius: isMobile ? 0 : "0 0 16px 16px", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>Cerrar</button>
+          </div>
+        </div>
+      )}
+      {/* ── MONDAY.COM MODAL ── */}
+      {showMonday && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 1100 }} onClick={() => setShowMonday(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? "20px 20px 0 0" : 16, width: isMobile ? "100%" : 400, maxHeight: isMobile ? "80vh" : "70vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(40,12,76,0.3)", padding: 24 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.purple }}>📋 Enviar a Monday.com</div>
+              <button onClick={() => setShowMonday(false)} style={{ background: "none", border: "none", fontSize: 20, color: "#aaa", cursor: "pointer" }}>✕</button>
+            </div>
+
+            {/* Token input (if not set or groups empty) */}
+            {(!mToken || mGroups.length === 0) && !mResult?.success && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: "#666", marginBottom: 6 }}>API Token de Monday.com</div>
+                <div style={{ fontSize: 9, color: "#999", marginBottom: 6 }}>Ve a monday.com → Avatar → Developers → My access tokens</div>
+                <input type="password" value={mToken} onChange={e => setMToken(e.target.value)} placeholder="Pega tu token aquí..."
+                  style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 12, fontFamily: font, boxSizing: "border-box" }} />
+                <button onClick={saveToken} disabled={!mToken}
+                  style={{ width: "100%", padding: "10px", background: mToken ? C.purple : "#ddd", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: mToken ? "pointer" : "default", marginTop: 8, fontFamily: font }}>Conectar</button>
+              </div>
+            )}
+
+            {/* Form (when token works) */}
+            {mGroups.length > 0 && !mResult?.success && (
+              <div>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>Nombre del paciente</div>
+                  <input type="text" value={mName} onChange={e => setMName(e.target.value)} placeholder="Nombre del paciente..."
+                    style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, fontFamily: font, boxSizing: "border-box" }} />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>Grupo (mes)</div>
+                  <select value={mGroupId} onChange={e => setMGroupId(e.target.value)}
+                    style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, fontFamily: font, boxSizing: "border-box", background: "#fff" }}>
+                    {mGroups.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
+                  </select>
+                </div>
+                <div style={{ fontSize: 10, color: "#888", marginBottom: 12, background: "#faf8fc", padding: "8px", borderRadius: 6 }}>
+                  <div><strong>{selected.length} estudios</strong> · Total: {fmt(totalFinal)}</div>
+                  <div style={{ marginTop: 4, color: "#bbb", fontSize: 9 }}>{selected.map(s => s.n).join(", ")}</div>
+                </div>
+                <button onClick={sendToMonday} disabled={mLoading || !mName.trim()}
+                  style={{ width: "100%", padding: "12px", background: mLoading || !mName.trim() ? "#ccc" : "#0B8A2E", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: mLoading ? "wait" : "pointer", fontFamily: font }}>
+                  {mLoading ? "Creando..." : "Crear en Monday.com"}
+                </button>
+              </div>
+            )}
+
+            {/* Result */}
+            {mResult?.success && (
+              <div style={{ textAlign: "center", padding: "16px 0" }}>
+                <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#0B8A2E", marginBottom: 8 }}>Elemento creado</div>
+                <a href={mResult.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: C.purpleLight, fontWeight: 600 }}>Abrir en Monday.com →</a>
+                <button onClick={() => setShowMonday(false)} style={{ width: "100%", padding: "10px", background: C.purple, color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", marginTop: 12, fontFamily: font }}>Cerrar</button>
+              </div>
+            )}
+
+            {/* Error */}
+            {mResult?.error && (
+              <div style={{ background: "#fef0f0", padding: "10px", borderRadius: 6, marginTop: 8, fontSize: 11, color: "#c62828" }}>
+                ⚠️ {mResult.error}
+              </div>
+            )}
           </div>
         </div>
       )}
