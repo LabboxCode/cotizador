@@ -340,41 +340,87 @@ const STUDIES_RAW = [
 
 const STUDIES = []; const seen = new Set();
 for (const s of STUDIES_RAW) { if (!seen.has(s.n)) { seen.add(s.n); STUDIES.push(s); } }
- 
+
 function parseTe(te) { if (!te || te === "NA") return null; const m = te.match(/(\d+)/); return m ? parseInt(m[1]) : null; }
 function roundTo50(v) { return Math.round(v / 50) * 50; }
 function fmt(n) { return "$" + Number(n).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
- 
-const DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
-const MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
- 
-function addBusinessDays(fromDate, days) {
-  if (days <= 0) return fromDate;
-  const d = new Date(fromDate);
-  let added = 0;
-  while (added < days) {
-    d.setDate(d.getDate() + 1);
-    const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) added++;
-  }
-  return d;
-}
- 
-function fmtDeliveryDate(days, baseDate) {
-  if (days === null) return null;
-  const base = baseDate ? new Date(baseDate + "T12:00:00") : new Date();
-  const today = new Date().toISOString().split('T')[0];
-  const isToday = !baseDate || baseDate === today;
-  if (days <= 1 && isToday) return "hoy por la tarde/noche";
-  if (days <= 1) { const d = new Date(base); const dow = DIAS_SEMANA[d.getDay()]; return `mismo día (${dow} ${d.getDate()} ${MESES[d.getMonth()]})`; }
-  const target = addBusinessDays(base, days);
-  const dow = DIAS_SEMANA[target.getDay()];
-  return `${dow} ${target.getDate()} ${MESES[target.getMonth()]}`;
-}
- 
+
 const C = { purple: "#280C4C", purpleLight: "#7535CA", orange: "#FC7A1D", teal: "#00EBD5", orangeDark: "#954003" };
 const font = "'Montserrat', sans-serif";
- 
+
+// ── PACKAGE DEFINITIONS (eval in order) ──
+const KEY_MAP = {
+  BH: "Biometria Hematica Completa", QS24: "Perfil Bioquimico 24 Elementos",
+  TIR: "Perfil Tiroideo con TSH", VITD: "Determinacion de Vitamina D (25-hidroxi)",
+  HOMA: "HOMA", EGO: "Examen General de Orina",
+  PHF: "Perfil Hormonal Femenino Completo", HBA1C: "Hemoglobina Glicosilada A1C",
+  CORT: "Cortisol en Sangre"
+};
+const PACKAGES = [
+  { id:"N2", nombre:"Check-up Tiroideo + Metabólico", core:["BH","QS24","TIR","HOMA","VITD"], pub:2700, doc:2500, lista:3150, costoOrthin:1317.76, gratis:["Examen General de Orina"] },
+  { id:"N1", nombre:"Check-up Tiroideo Completo", core:["BH","QS24","TIR","VITD"], pub:2300, doc:2150, lista:2700, costoOrthin:1103.16, gratis:["Examen General de Orina"] },
+  { id:"N5", nombre:"Perfil Ginecológico", core:["PHF","TIR","VITD"], pub:2250, doc:2100, lista:2600, costoOrthin:1115.92, gratis:["Cortisol en Sangre"] },
+  { id:"N3", nombre:"Perfil Metabólico Completo", core:["BH","QS24","TIR"], pub:1700, doc:1600, lista:2000, costoOrthin:685.56, gratis:["Examen General de Orina"] },
+  { id:"N4", nombre:"Control de Diabetes", core:["BH","QS24","HBA1C"], pub:1300, doc:1200, lista:1550, costoOrthin:448.92, gratis:["Examen General de Orina"] },
+  { id:"N6", nombre:"Check-up Básico", core:["BH","QS24","EGO"], pub:1200, doc:1100, lista:1400, costoOrthin:306.24, gratis:[] }
+];
+
+function detectPackages(selected, isSocio) {
+  const names = selected.map(s => s.n);
+  const consumed = new Set();
+  const matched = [];
+  for (const pkg of PACKAGES) {
+    const coreNames = pkg.core.map(k => KEY_MAP[k]);
+    if (coreNames.every(n => names.includes(n) && !consumed.has(n))) {
+      coreNames.forEach(n => consumed.add(n));
+      pkg.gratis.forEach(n => consumed.add(n));
+      matched.push({ ...pkg, price: isSocio ? pkg.doc : pkg.pub });
+    }
+  }
+  const individual = selected.filter(s => !consumed.has(s.n));
+  const indSubtotal = individual.reduce((a, s) => a + s.p, 0);
+  const indFinal = isSocio ? roundTo50(indSubtotal * 0.85) : indSubtotal;
+  const pkgTotal = matched.reduce((a, p) => a + p.price, 0);
+  const totalFinal = pkgTotal + indFinal;
+
+  // Notices for free included studies
+  const notices = [];
+  const hasStudy = n => names.includes(n);
+  if (hasStudy("Perfil Bioquimico 24 Elementos") && !hasStudy("Examen General de Orina")) notices.push("Incluimos Examen General de Orina sin costo adicional.");
+  if (hasStudy("Perfil Bioquimico 24 Elementos") && !hasStudy("Biometria Hematica Completa")) notices.push("Incluimos Biometría Hemática sin costo adicional.");
+  if (hasStudy("Perfil Hormonal Femenino Completo") && hasStudy("Perfil Tiroideo con TSH") && !hasStudy("Cortisol en Sangre")) notices.push("Incluimos Cortisol en Sangre sin costo adicional.");
+
+  // Upsell
+  let upsell = null;
+  if (hasStudy("Biometria Hematica Completa") && hasStudy("Perfil Tiroideo con TSH") && hasStudy("Determinacion de Vitamina D (25-hidroxi)") && !hasStudy("Perfil Bioquimico 24 Elementos")) {
+    const currentSum = selected.filter(s => ["Biometria Hematica Completa","Perfil Tiroideo con TSH","Determinacion de Vitamina D (25-hidroxi)"].includes(s.n)).reduce((a,s)=>a+s.p,0);
+    upsell = `Por $${2300 - currentSum} más incluyes QS24 + EGO. Check-up Tiroideo Completo en $2,300 en lugar de $${currentSum}.`;
+  }
+
+  return { matched, individual, indSubtotal, indFinal, pkgTotal, totalFinal, notices, upsell, consumed };
+}
+
+function calcOrthinCost(selected) {
+  const names = selected.map(s => s.n);
+  const consumed = new Set();
+  let totalCost = 0;
+  // Rule 1: QS24 → Check-Up 28 ($306.24), consumes QS24+BH+EGO
+  if (names.includes("Perfil Bioquimico 24 Elementos")) {
+    totalCost += 306.24;
+    ["Perfil Bioquimico 24 Elementos","Biometria Hematica Completa","Examen General de Orina"].forEach(n => consumed.add(n));
+  }
+  // Rule 2: PHF+TIR → Hormonal con Tiroideo I ($698.32), consumes PHF+TIR+CORT
+  if (names.includes("Perfil Hormonal Femenino Completo") && names.includes("Perfil Tiroideo con TSH") && !consumed.has("Perfil Tiroideo con TSH")) {
+    totalCost += 698.32;
+    ["Perfil Hormonal Femenino Completo","Perfil Tiroideo con TSH","Cortisol en Sangre"].forEach(n => consumed.add(n));
+  }
+  // Rest individual
+  for (const s of selected) {
+    if (!consumed.has(s.n)) totalCost += (s.co || 0);
+  }
+  return totalCost;
+}
+
 export default function App() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState([]);
@@ -382,84 +428,78 @@ export default function App() {
   const [showQuote, setShowQuote] = useState(false);
   const [showInd, setShowInd] = useState(false);
   const [showCart, setShowCart] = useState(false);
-  const [studyDate, setStudyDate] = useState(new Date().toISOString().split('T')[0]);
-  const [catFilter, setCatFilter] = useState("Todas");
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && window.innerWidth < 768);
- 
+
   useState(() => {
     if (typeof window === "undefined") return;
     const handler = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
   });
- 
-  const categories = useMemo(() => {
-    const cats = new Set();
-    STUDIES.forEach(s => { if (s.cat) s.cat.split(",").forEach(c => cats.add(c.trim())); });
-    return ["Todas", ...Array.from(cats).filter(Boolean).sort()];
-  }, []);
- 
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (!q) return STUDIES;
     return STUDIES.filter(s => {
-      const cm = catFilter === "Todas" || (s.cat && s.cat.includes(catFilter));
-      if (!cm) return false;
-      if (!q) return true;
       const n = (s.n || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const sy = (s.sin || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       return n.includes(q) || sy.includes(q);
     });
-  }, [search, catFilter]);
- 
+  }, [search]);
+
   const add = (s) => { if (!selected.find(x => x.n === s.n)) setSelected([...selected, s]); };
   const rem = (n) => setSelected(selected.filter(s => s.n !== n));
- 
-  const subtotal = selected.reduce((s, x) => s + x.p, 0);
-  const totalCost = selected.reduce((s, x) => s + (x.co || 0), 0);
+
+  const pkgResult = useMemo(() => detectPackages(selected, isSocio), [selected, isSocio]);
+  const orthinCost = useMemo(() => calcOrthinCost(selected), [selected]);
+  const { matched: pkgs, individual: indStudies, indSubtotal, indFinal, pkgTotal, totalFinal, notices, upsell, consumed } = pkgResult;
+
+  // Competitor comparison (on raw prices, not package)
+  const rawSubtotal = selected.reduce((s, x) => s + x.p, 0);
   const compTotal = selected.reduce((s, x) => {
     const pp = [x.ch, x.mo, x.sw, x.ts].filter(p => p && p > 0);
     return pp.length === 0 ? s : s + pp.reduce((a, b) => a + b, 0) / pp.length;
   }, 0);
   const hasComp = selected.some(s => [s.ch, s.mo, s.sw, s.ts].some(p => p && p > 0));
-  const totalDisc = roundTo50(subtotal * 0.85);
-  const discount = subtotal - totalDisc;
-  const final = isSocio ? totalDisc : subtotal;
-  const margin = final > 0 ? ((final - totalCost) / final * 100) : 0;
-  const profit = final - totalCost;
- 
-  const deliveryInfo = useMemo(() => {
-    if (!selected.length) return [];
-    return selected.map(s => {
-      const days = parseTe(s.te);
-      return { n: s.n, days, dateStr: fmtDeliveryDate(days, studyDate) };
-    });
-  }, [selected, studyDate]);
- 
-  const delSummary = useMemo(() => {
-    if (!deliveryInfo.length) return "";
-    const withDays = deliveryInfo.filter(d => d.days !== null);
-    if (!withDays.length) return "Consultar tiempo de entrega";
-    const allSame = withDays.every(d => d.days === withDays[0].days);
-    if (allSame) {
-      return withDays[0].days <= 1 && studyDate === new Date().toISOString().split('T')[0]
-        ? "Resultados hoy por la tarde/noche"
-        : `Resultados el ${withDays[0].dateStr}`;
-    }
-    const mn = Math.min(...withDays.map(d => d.days));
-    const mx = Math.max(...withDays.map(d => d.days));
-    const fastest = fmtDeliveryDate(mn, studyDate);
-    const slowest = fmtDeliveryDate(mx, studyDate);
-    const isToday = studyDate === new Date().toISOString().split('T')[0];
-    return mn <= 1 && isToday ? `Mayoría hoy, algunos hasta el ${slowest}` : `Entre ${fastest} y ${slowest}`;
-  }, [deliveryInfo, studyDate]);
- 
+
+  const margin = totalFinal > 0 ? ((totalFinal - orthinCost) / totalFinal * 100) : 0;
+  const profit = totalFinal - orthinCost;
   const specInd = useMemo(() => selected.filter(s => s.ind && !s.ind.includes("No requiere") && s.ind.trim()), [selected]);
   const maxAy = useMemo(() => { const a = selected.map(s => s.ay).filter(a => a > 0); return a.length ? Math.max(...a) : 0; }, [selected]);
- 
+
+  // ── Shared totals section (used in desktop + mobile) ──
+  const TotalsSection = ({ fs = 1 }) => (
+    <>
+      {pkgs.length > 0 && pkgs.map(p => (
+        <div key={p.id} style={{ background: "#f0faf3", borderRadius: 6, padding: "6px 8px", marginBottom: 4, border: "1px solid #d5f0dd" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11*fs }}>
+            <span style={{ fontWeight: 700, color: "#1b7a3a" }}>📦 {p.nombre}</span>
+            <span style={{ fontWeight: 700, color: "#1b7a3a" }}>{fmt(p.price)}</span>
+          </div>
+          <div style={{ fontSize: 9*fs, color: "#666", marginTop: 2 }}>{p.core.map(k => KEY_MAP[k]).join(" + ")}</div>
+        </div>
+      ))}
+      {indStudies.length > 0 && isSocio && pkgs.length > 0 && (
+        <div style={{ fontSize: 10*fs, color: "#888", marginBottom: 2 }}>Estudios individuales: {fmt(indSubtotal)} → {fmt(indFinal)}</div>
+      )}
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16*fs, fontWeight: 800, color: C.purple, marginTop: 4 }}>
+        <span>Total:</span><span>{fmt(totalFinal)}</span>
+      </div>
+      {hasComp && compTotal > totalFinal && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10*fs, color: "#666", marginTop: 4, background: "#f8f8f8", borderRadius: 6, padding: "4px 8px" }}>
+          <span>Competencia: <span style={{ textDecoration: "line-through" }}>{fmt(compTotal)}</span></span>
+          <span style={{ fontWeight: 700, color: "#1b7a3a" }}>Ahorro: {fmt(compTotal - totalFinal)}</span>
+        </div>
+      )}
+    </>
+  );
+
+  // ── RENDER ──
   return (
     <div style={{ fontFamily: font, background: "#f7f5fa", minHeight: "100vh" }}>
       <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
- 
+
+      {/* Header */}
       <div style={{ background: `linear-gradient(135deg, ${C.purple} 0%, ${C.purpleLight} 100%)`, padding: isMobile ? "10px 16px" : "14px 24px", display: "flex", alignItems: "center", gap: 8, position: "sticky", top: 0, zIndex: 50 }}>
         <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: "#fff", letterSpacing: -0.5 }}>lab</span>
         <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: C.orange, letterSpacing: -0.5, marginLeft: -6 }}>box</span>
@@ -473,29 +513,26 @@ export default function App() {
           </label>
         </div>
       </div>
- 
+
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", maxWidth: 1400, margin: "0 auto", minHeight: isMobile ? "auto" : "calc(100vh - 50px)" }}>
- 
+
+        {/* ── LEFT: Study List ── */}
         <div style={{ flex: 1, padding: isMobile ? "10px 12px" : "14px 18px", overflowY: isMobile ? "visible" : "auto", maxHeight: isMobile ? "none" : "calc(100vh - 50px)", paddingBottom: isMobile && selected.length ? 80 : 14 }}>
-          <input type="text" placeholder="Buscar estudios..." value={search} onChange={e => setSearch(e.target.value)}
+          <input type="text" placeholder="Buscar estudios por nombre o sinónimo..." value={search} onChange={e => setSearch(e.target.value)}
             style={{ width: "100%", padding: isMobile ? "10px 12px" : "10px 14px", border: "2px solid #e0dce6", borderRadius: 8, fontSize: 14, background: "#fff", outline: "none", boxSizing: "border-box", fontFamily: font }}
             onFocus={e => e.target.style.borderColor = C.purpleLight} onBlur={e => e.target.style.borderColor = "#e0dce6"} />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8, marginBottom: 8 }}>
-            {categories.map(c => (
-              <button key={c} onClick={() => setCatFilter(c)} style={{ padding: "4px 10px", borderRadius: 12, border: "none", fontSize: isMobile ? 11 : 10, fontWeight: 600, cursor: "pointer", background: catFilter === c ? C.purple : "#ece8f2", color: catFilter === c ? "#fff" : C.purple, fontFamily: font }}>{c}</button>
-            ))}
-          </div>
-          <div style={{ fontSize: 10, color: "#aaa", marginBottom: 4 }}>{filtered.length} estudios</div>
+          <div style={{ fontSize: 10, color: "#aaa", marginTop: 6, marginBottom: 4 }}>{filtered.length} estudios</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {filtered.map(s => {
               const sel = selected.some(x => x.n === s.n);
+              const days = parseTe(s.te);
               return (
                 <div key={s.n} onClick={() => !sel && add(s)} style={{ padding: isMobile ? "10px 12px" : "8px 10px", background: sel ? "#f3eef9" : "#fff", borderRadius: 8, border: sel ? `2px solid ${C.purpleLight}` : "1px solid #eee", cursor: sel ? "default" : "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", opacity: sel ? 0.4 : 1, transition: "all 0.12s" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: isMobile ? 13 : 12, fontWeight: 600, color: C.purple }}>{s.n}</div>
                     <div style={{ fontSize: isMobile ? 10 : 9, color: "#aaa", marginTop: 2 }}>
                       {s.ay > 0 && <span style={{ background: "#fff3e0", color: C.orangeDark, padding: "1px 5px", borderRadius: 4, marginRight: 4, fontSize: 9, fontWeight: 700 }}>Ayuno {s.ay}h</span>}
-                      {s.te && s.te !== "NA" ? s.te : ""}
+                      {days !== null && <span>{days} día{days !== 1 ? "s" : ""}</span>}
                     </div>
                   </div>
                   <div style={{ fontSize: isMobile ? 14 : 13, fontWeight: 700, color: C.purple, whiteSpace: "nowrap", marginLeft: 8 }}>{fmt(s.p)}</div>
@@ -504,19 +541,19 @@ export default function App() {
             })}
           </div>
         </div>
- 
+
+        {/* ── RIGHT PANEL / MOBILE ── */}
         {isMobile ? (
           <>
             {selected.length > 0 && !showCart && (
               <div onClick={() => setShowCart(true)} style={{ position: "fixed", bottom: 16, left: 16, right: 16, background: `linear-gradient(135deg, ${C.purple}, ${C.purpleLight})`, borderRadius: 14, padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", zIndex: 40, boxShadow: "0 6px 24px rgba(40,12,76,0.35)", cursor: "pointer" }}>
                 <div>
-                  <div style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{selected.length} estudio{selected.length > 1 ? "s" : ""} seleccionado{selected.length > 1 ? "s" : ""}</div>
-                  <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, marginTop: 2 }}>{delSummary}</div>
+                  <div style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{selected.length} estudio{selected.length > 1 ? "s" : ""}</div>
+                  {pkgs.length > 0 && <div style={{ color: C.teal, fontSize: 10, marginTop: 1 }}>📦 {pkgs.map(p => p.nombre).join(" + ")}</div>}
                 </div>
-                <div style={{ color: "#fff", fontSize: 18, fontWeight: 800 }}>{fmt(final)}</div>
+                <div style={{ color: "#fff", fontSize: 18, fontWeight: 800 }}>{fmt(totalFinal)}</div>
               </div>
             )}
- 
             {showCart && (
               <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 100, display: "flex", alignItems: "flex-end" }} onClick={() => setShowCart(false)}>
                 <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: "20px 20px 0 0", width: "100%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 -4px 20px rgba(0,0,0,0.15)" }}>
@@ -525,41 +562,28 @@ export default function App() {
                     <button onClick={() => setShowCart(false)} style={{ background: "none", border: "none", fontSize: 20, color: "#aaa", cursor: "pointer" }}>✕</button>
                   </div>
                   <div style={{ padding: "8px 18px" }}>
-                    {selected.map(s => {
-                      const dInfo = deliveryInfo.find(d => d.n === s.n);
-                      return (
-                        <div key={s.n} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f5f3f8" }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 12, color: "#444" }}>{s.n}</div>
-                            {dInfo && dInfo.dateStr && <div style={{ fontSize: 9, color: "#999", marginTop: 1 }}>📦 {dInfo.dateStr}</div>}
-                          </div>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, whiteSpace: "nowrap" }}>{fmt(s.p)}</div>
-                          <button onClick={() => rem(s.n)} style={{ marginLeft: 8, background: "#fee", border: "none", borderRadius: "50%", width: 24, height: 24, color: "#c62828", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                    {selected.map(s => (
+                      <div key={s.n} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f5f3f8" }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12, color: consumed.has(s.n) ? "#1b7a3a" : "#444" }}>{s.n} {consumed.has(s.n) && <span style={{ fontSize: 9, fontWeight: 600 }}>📦</span>}</div>
                         </div>
-                      );
-                    })}
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, whiteSpace: "nowrap" }}>{fmt(s.p)}</div>
+                        <button onClick={() => rem(s.n)} style={{ marginLeft: 8, background: "#fee", border: "none", borderRadius: "50%", width: 24, height: 24, color: "#c62828", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                      </div>
+                    ))}
                   </div>
                   <div style={{ padding: "12px 18px", borderTop: `2px solid ${C.purple}` }}>
-                    {isSocio && (<>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#888", marginBottom: 3 }}><span>Subtotal:</span><span>{fmt(subtotal)}</span></div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: C.orange, fontWeight: 600, marginBottom: 3 }}><span>Desc. socio (15%):</span><span>-{fmt(discount)}</span></div>
-                    </>)}
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18, fontWeight: 800, color: C.purple }}><span>Total:</span><span>{fmt(final)}</span></div>
-                    {hasComp && compTotal > final && (
-                      <div style={{ background: "#f0faf3", borderRadius: 6, padding: "6px 8px", marginTop: 6, border: "1px solid #d5f0dd" }}>
-                        <div style={{ fontSize: 10, color: "#666" }}>Competencia: <span style={{ textDecoration: "line-through" }}>{fmt(compTotal)}</span></div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#1b7a3a" }}>Ahorro: {fmt(compTotal - final)}</div>
-                      </div>
-                    )}
-                    <div style={{ marginTop: 6, fontSize: 11, color: "#666", display: "flex", alignItems: "center", gap: 6 }}>📅 <input type="date" value={studyDate} onChange={e => setStudyDate(e.target.value)} style={{ border: "1px solid #ddd", borderRadius: 4, padding: "3px 6px", fontSize: 11, fontFamily: font, color: C.purple }} /></div>
-                    <div style={{ marginTop: 4, fontSize: 11, color: "#666" }}>📦 {delSummary}</div>
-                    {maxAy > 0 && <div style={{ marginTop: 2, fontSize: 11, color: C.orangeDark, fontWeight: 600 }}>⏰ Ayuno: {maxAy} horas</div>}
+                    {notices.map((n, i) => <div key={i} style={{ fontSize: 10, color: "#1b7a3a", fontWeight: 600, marginBottom: 3 }}>✓ {n}</div>)}
+                    <TotalsSection fs={1.1} />
+                    {maxAy > 0 && <div style={{ marginTop: 4, fontSize: 11, color: C.orangeDark, fontWeight: 600 }}>⏰ Ayuno: {maxAy} horas</div>}
                     <button onClick={() => { setShowCart(false); setShowQuote(true); }} style={{ width: "100%", padding: "12px", background: `linear-gradient(135deg, ${C.orangeDark}, ${C.orange})`, color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 10, fontFamily: font }}>Ver Cotización para Paciente</button>
                   </div>
+                  {/* Internal mobile */}
                   <div style={{ padding: "8px 18px 14px", background: "#faf8fc", borderTop: "1px dashed #e0dce6" }}>
                     <div style={{ fontSize: 9, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Análisis Interno</div>
+                    {upsell && <div style={{ fontSize: 10, color: C.orange, fontWeight: 600, marginBottom: 4, background: "#fff8f0", padding: "4px 6px", borderRadius: 4 }}>💡 {upsell}</div>}
                     <div style={{ display: "flex", gap: 6 }}>
-                      {[{ l: "Costo", v: fmt(totalCost), c: "#c62828" }, { l: "Ganancia", v: fmt(profit), c: profit >= 0 ? "#1b7a3a" : "#c62828" }, { l: "Margen", v: margin.toFixed(1) + "%", c: margin >= 40 ? "#1b7a3a" : margin >= 25 ? "#e65100" : "#c62828" }].map(({ l, v, c }) => (
+                      {[{ l: "Costo Orthin", v: fmt(orthinCost), c: "#c62828" }, { l: "Ganancia", v: fmt(profit), c: profit >= 0 ? "#1b7a3a" : "#c62828" }, { l: "Margen", v: margin.toFixed(1) + "%", c: margin >= 40 ? "#1b7a3a" : margin >= 25 ? "#e65100" : "#c62828" }].map(({ l, v, c }) => (
                         <div key={l} style={{ flex: 1, background: "#fff", borderRadius: 5, padding: "5px 6px", textAlign: "center", border: "1px solid #eee" }}>
                           <div style={{ fontSize: 8, color: "#999" }}>{l}</div>
                           <div style={{ fontSize: 12, fontWeight: 700, color: c }}>{v}</div>
@@ -572,6 +596,7 @@ export default function App() {
             )}
           </>
         ) : (
+          /* ── DESKTOP RIGHT PANEL ── */
           <div style={{ width: 380, background: "#fff", borderLeft: "1px solid #e8e4ee", display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 50px)", overflowY: "auto" }}>
             <div style={{ padding: "12px 16px", borderBottom: "1px solid #eee", background: "#faf8fc" }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: C.purple }}>Estudios Seleccionados ({selected.length})</div>
@@ -579,47 +604,40 @@ export default function App() {
             {!selected.length ? <div style={{ padding: 32, textAlign: "center", color: "#ccc", fontSize: 12 }}>Selecciona estudios de la lista</div> : (
               <>
                 <div style={{ padding: "4px 16px", flex: 1 }}>
-                  {selected.map(s => {
-                    const dInfo = deliveryInfo.find(d => d.n === s.n);
-                    return (
-                      <div key={s.n} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #f5f3f8" }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 11, color: "#444", paddingRight: 4 }}>{s.n}</div>
-                          {dInfo && dInfo.dateStr && <div style={{ fontSize: 8, color: "#999" }}>📦 {dInfo.dateStr}</div>}
-                        </div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, whiteSpace: "nowrap" }}>{fmt(s.p)}</div>
-                        <button onClick={() => rem(s.n)} style={{ marginLeft: 4, background: "none", border: "none", color: "#ccc", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>×</button>
+                  {selected.map(s => (
+                    <div key={s.n} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #f5f3f8" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, color: consumed.has(s.n) ? "#1b7a3a" : "#444", paddingRight: 4 }}>{s.n} {consumed.has(s.n) && <span style={{ fontSize: 8, fontWeight: 600 }}>📦</span>}</div>
                       </div>
-                    );
-                  })}
-                </div>
-                <div style={{ padding: "12px 16px", borderTop: `2px solid ${C.purple}` }}>
-                  {isSocio && (<>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#888", marginBottom: 3 }}><span>Subtotal:</span><span>{fmt(subtotal)}</span></div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.orange, fontWeight: 600, marginBottom: 3 }}><span>Desc. médico socio (15%):</span><span>-{fmt(discount)}</span></div>
-                  </>)}
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, color: C.purple, paddingTop: isSocio ? 4 : 0, borderTop: isSocio ? "1px solid #eee" : "none" }}><span>Total:</span><span>{fmt(final)}</span></div>
-                  {hasComp && compTotal > final && (
-                    <div style={{ background: "#f0faf3", borderRadius: 6, padding: "6px 8px", marginTop: 6, border: "1px solid #d5f0dd" }}>
-                      <div style={{ fontSize: 10, color: "#666" }}>Competencia: <span style={{ textDecoration: "line-through" }}>{fmt(compTotal)}</span></div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#1b7a3a" }}>Ahorro: {fmt(compTotal - final)}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, whiteSpace: "nowrap" }}>{fmt(s.p)}</div>
+                      <button onClick={() => rem(s.n)} style={{ marginLeft: 4, background: "none", border: "none", color: "#ccc", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>×</button>
                     </div>
-                  )}
-                  <div style={{ marginTop: 8, fontSize: 10, color: "#666", display: "flex", alignItems: "center", gap: 6 }}>📅 <strong>Fecha:</strong> <input type="date" value={studyDate} onChange={e => setStudyDate(e.target.value)} style={{ border: "1px solid #ddd", borderRadius: 4, padding: "2px 4px", fontSize: 10, fontFamily: font, color: C.purple }} /></div>
-                  <div style={{ marginTop: 4, fontSize: 10, color: "#666" }}>📦 <strong>Entrega:</strong> {delSummary}</div>
-                  {maxAy > 0 && <div style={{ marginTop: 2, fontSize: 10, color: C.orangeDark, fontWeight: 600 }}>⏰ Ayuno: {maxAy} horas</div>}
+                  ))}
+                </div>
+                {/* Notices */}
+                {notices.length > 0 && (
+                  <div style={{ padding: "6px 16px", background: "#f0faf3" }}>
+                    {notices.map((n, i) => <div key={i} style={{ fontSize: 10, color: "#1b7a3a", fontWeight: 600, marginBottom: 2 }}>✓ {n}</div>)}
+                  </div>
+                )}
+                <div style={{ padding: "12px 16px", borderTop: `2px solid ${C.purple}` }}>
+                  <TotalsSection />
+                  {maxAy > 0 && <div style={{ marginTop: 4, fontSize: 10, color: C.orangeDark, fontWeight: 600 }}>⏰ Ayuno: {maxAy} horas</div>}
                   <button onClick={() => setShowQuote(true)} style={{ width: "100%", padding: "10px", background: `linear-gradient(135deg, ${C.orangeDark}, ${C.orange})`, color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 12, fontFamily: font }}>Ver Cotización para Paciente</button>
                 </div>
+                {/* Internal */}
                 <div style={{ padding: "8px 16px", background: "#faf8fc", borderTop: "1px dashed #e0dce6" }}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Análisis Interno</div>
+                  {upsell && <div style={{ fontSize: 10, color: C.orange, fontWeight: 600, marginBottom: 6, background: "#fff8f0", padding: "6px 8px", borderRadius: 4, border: "1px solid #ffe0c0" }}>💡 Upsell: {upsell}</div>}
                   <div style={{ display: "flex", gap: 6 }}>
-                    {[{ l: "Costo", v: fmt(totalCost), c: "#c62828" }, { l: "Ganancia", v: fmt(profit), c: profit >= 0 ? "#1b7a3a" : "#c62828" }, { l: "Margen", v: margin.toFixed(1) + "%", c: margin >= 40 ? "#1b7a3a" : margin >= 25 ? "#e65100" : "#c62828" }].map(({ l, v, c }) => (
+                    {[{ l: "Costo Orthin", v: fmt(orthinCost), c: "#c62828" }, { l: "Ganancia", v: fmt(profit), c: profit >= 0 ? "#1b7a3a" : "#c62828" }, { l: "Margen", v: margin.toFixed(1) + "%", c: margin >= 40 ? "#1b7a3a" : margin >= 25 ? "#e65100" : "#c62828" }].map(({ l, v, c }) => (
                       <div key={l} style={{ flex: 1, background: "#fff", borderRadius: 5, padding: "5px 6px", textAlign: "center", border: "1px solid #eee" }}>
                         <div style={{ fontSize: 8, color: "#999" }}>{l}</div>
                         <div style={{ fontSize: 12, fontWeight: 700, color: c }}>{v}</div>
                       </div>
                     ))}
                   </div>
+                  {pkgs.length > 0 && <div style={{ fontSize: 8, color: "#999", marginTop: 4 }}>Costo paquete: {pkgs.map(p => `${p.nombre} $${p.costoOrthin}`).join(", ")}</div>}
                   <div style={{ marginTop: 4, fontSize: 8, color: "#ccc" }}>
                     {selected.map(s => { const sp = isSocio ? s.p * 0.85 : s.p; const m = sp > 0 ? ((sp - (s.co||0)) / sp * 100) : 0; return (
                       <div key={s.n} style={{ display: "flex", justifyContent: "space-between", padding: "1px 0" }}>
@@ -634,7 +652,8 @@ export default function App() {
           </div>
         )}
       </div>
- 
+
+      {/* ── QUOTE MODAL (patient-facing) ── */}
       {showQuote && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setShowQuote(false); setShowInd(false); }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? "20px 20px 0 0" : 16, width: isMobile ? "100%" : 440, maxHeight: isMobile ? "95vh" : "92vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(40,12,76,0.3)" }}>
@@ -642,57 +661,84 @@ export default function App() {
               <div><span style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>lab</span><span style={{ fontSize: 26, fontWeight: 800, color: C.orange }}>box</span></div>
               <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 500, marginTop: 1 }}>Estudios de Laboratorio · 100% a Domicilio</div>
             </div>
- 
+
             <div style={{ padding: "12px 24px 8px" }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 8 }}>Resumen de Estudios</div>
-              {selected.map(s => {
-                const dInfo = deliveryInfo.find(d => d.n === s.n);
-                return (
-                  <div key={s.n} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "4px 0", borderBottom: "1px solid #f3f1f6" }}>
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: 11, color: "#444" }}>{s.n}</span>
-                      {dInfo && dInfo.dateStr && <div style={{ fontSize: 9, color: "#999", marginTop: 1 }}>📦 {dInfo.dateStr}</div>}
+              {/* Package studies */}
+              {pkgs.map(p => (
+                <div key={p.id} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#1b7a3a", marginBottom: 4 }}>📦 {p.nombre}</div>
+                  {p.core.map(k => (
+                    <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", paddingLeft: 12 }}>
+                      <span style={{ fontSize: 10, color: "#888" }}>✓ {KEY_MAP[k]}</span>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: C.purple, whiteSpace: "nowrap", marginLeft: 8 }}>{fmt(s.p)}</span>
+                  ))}
+                  {p.gratis.map(g => (
+                    <div key={g} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", paddingLeft: 12 }}>
+                      <span style={{ fontSize: 10, color: "#1b7a3a", fontStyle: "italic" }}>✓ {g} (incluido)</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 2 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.purple }}>{fmt(p.price)}</span>
                   </div>
-                );
-              })}
- 
-              {isSocio && (<>
-                <div style={{ background: "#f7f5fa", borderRadius: 8, padding: "8px 12px", marginTop: 10, display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 11, color: "#666", fontWeight: 500 }}>Subtotal:</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>{fmt(subtotal)}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 12px", color: "#0B8A2E", fontSize: 10, fontWeight: 700 }}>
-                  <span>Descuento médico socio (15%):</span><span>-{fmt(discount)}</span>
-                </div>
-              </>)}
- 
-              <div style={{ background: C.purple, borderRadius: 10, padding: "10px 14px", marginTop: isSocio ? 4 : 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: 600 }}>Total a pagar:</span>
-                <span style={{ color: "#fff", fontSize: 20, fontWeight: 800 }}>{fmt(final)}</span>
+              ))}
+
+              {/* Individual studies */}
+              {indStudies.length > 0 && (
+                <>
+                  {pkgs.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginTop: 6, marginBottom: 4 }}>Estudios adicionales</div>}
+                  {pkgs.length === 0 && <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 8 }}>Resumen de Estudios</div>}
+                  {indStudies.map(s => (
+                    <div key={s.n} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #f3f1f6" }}>
+                      <span style={{ fontSize: 11, color: "#444", flex: 1 }}>{s.n}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: C.purple, whiteSpace: "nowrap", marginLeft: 8 }}>{fmt(s.p)}</span>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* Subtotal */}
+              <div style={{ background: "#f7f5fa", borderRadius: 8, padding: "8px 12px", marginTop: 10, display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 11, color: "#666", fontWeight: 500 }}>Subtotal:</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>{fmt(rawSubtotal)}</span>
               </div>
- 
-              {hasComp && compTotal > final && (
-                <div style={{ background: "#FFF9C4", borderRadius: 10, padding: "10px 14px", marginTop: 8, border: "1px solid #F9E547" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 11, color: "#333", fontWeight: 500 }}>En otros laboratorios pagarías:</span>
-                    <span style={{ fontSize: 13, color: "#666", textDecoration: "line-through", fontWeight: 600 }}>{fmt(compTotal)}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: "#0B8A2E" }}>Tu ahorro con Labbox:</span>
-                    <span style={{ fontSize: 17, fontWeight: 800, color: "#0B8A2E" }}>{fmt(compTotal - final)}</span>
-                  </div>
+
+              {/* Socio discount */}
+              {isSocio && (
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 12px", color: "#0B8A2E", fontSize: 10, fontWeight: 700 }}>
+                  <span>Descuento médico socio:</span><span>-{fmt(rawSubtotal - totalFinal)}</span>
                 </div>
               )}
- 
+
+              {/* Competitor with savings */}
+              {hasComp && compTotal > totalFinal && (
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 12px", fontSize: 10, color: "#666", background: "#fffde7", borderRadius: 6, marginTop: 4 }}>
+                  <span>En otros laboratorios pagarías: <span style={{ textDecoration: "line-through" }}>{fmt(compTotal)}</span></span>
+                  <span style={{ fontWeight: 700, color: "#1b7a3a" }}>Ahorro {fmt(compTotal - totalFinal)}</span>
+                </div>
+              )}
+
+              {/* TOTAL — big, bold, uppercase */}
+              <div style={{ background: C.purple, borderRadius: 10, padding: "12px 14px", marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 14, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Total a Pagar:</span>
+                <span style={{ color: "#fff", fontSize: 22, fontWeight: 800 }}>{fmt(totalFinal)}</span>
+              </div>
+
+              {/* Badges */}
               <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                 {maxAy > 0 && <div style={{ background: "#fff3e0", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: C.orangeDark }}>⏰ Ayuno: {maxAy} hrs</div>}
                 <div style={{ background: "#e8f5e9", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#2e7d32" }}>🏠 Domicilio incluido</div>
-                <div style={{ background: "#e3f2fd", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#1565c0" }}>📦 {delSummary}</div>
-                <div style={{ background: "#f3e5f5", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#7b1fa2" }}>💳 MSI disponibles</div>
+                {totalFinal >= 3000 && <div style={{ background: "#f3e5f5", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#7b1fa2" }}>💳 MSI disponibles</div>}
               </div>
- 
+
+              {/* MSI detail */}
+              {totalFinal >= 3000 && (
+                <div style={{ fontSize: 10, color: "#7b1fa2", marginTop: 4, fontWeight: 500 }}>
+                  O en 4 quincenas de {fmt(roundTo50(totalFinal / 4))} sin intereses.
+                </div>
+              )}
+
+              {/* Collapsible indications */}
               {specInd.length > 0 && (
                 <div style={{ marginTop: 10, borderTop: "1px solid #f0eef4" }}>
                   <div onClick={() => setShowInd(!showInd)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0 4px", cursor: "pointer" }}>
@@ -710,7 +756,7 @@ export default function App() {
                   )}
                 </div>
               )}
- 
+
               <div style={{ marginTop: 6, textAlign: "center", fontSize: 9, color: "#ccc", padding: "4px 0" }}>www.labbox.com.mx</div>
             </div>
             <button onClick={() => { setShowQuote(false); setShowInd(false); }} style={{ position: "sticky", bottom: 0, width: "100%", padding: "10px", background: "#f5f3f8", color: "#999", border: "none", borderRadius: isMobile ? 0 : "0 0 16px 16px", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>Cerrar</button>
