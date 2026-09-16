@@ -663,39 +663,19 @@ export default function App() {
             </div>
 
             <div style={{ padding: "12px 24px 8px" }}>
-              {/* Package studies */}
-              {pkgs.map(p => (
-                <div key={p.id} style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#1b7a3a", marginBottom: 4 }}>📦 {p.nombre}</div>
-                  {p.core.map(k => (
-                    <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", paddingLeft: 12 }}>
-                      <span style={{ fontSize: 10, color: "#888" }}>✓ {KEY_MAP[k]}</span>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 8 }}>Resumen de Estudios</div>
+              {selected.map(s => {
+                const days = parseTe(s.te);
+                return (
+                  <div key={s.n} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "4px 0", borderBottom: "1px solid #f3f1f6" }}>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: 11, color: "#444" }}>{s.n}</span>
+                      {days !== null && <div style={{ fontSize: 9, color: "#999", marginTop: 1 }}>📦 {days <= 1 ? "Mismo día" : `${days} días hábiles`}</div>}
                     </div>
-                  ))}
-                  {p.gratis.map(g => (
-                    <div key={g} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", paddingLeft: 12 }}>
-                      <span style={{ fontSize: 10, color: "#1b7a3a", fontStyle: "italic" }}>✓ {g} (incluido)</span>
-                    </div>
-                  ))}
-                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 2 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: C.purple }}>{fmt(p.price)}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: C.purple, whiteSpace: "nowrap", marginLeft: 8 }}>{fmt(s.p)}</span>
                   </div>
-                </div>
-              ))}
-
-              {/* Individual studies */}
-              {indStudies.length > 0 && (
-                <>
-                  {pkgs.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginTop: 6, marginBottom: 4 }}>Estudios adicionales</div>}
-                  {pkgs.length === 0 && <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 8 }}>Resumen de Estudios</div>}
-                  {indStudies.map(s => (
-                    <div key={s.n} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #f3f1f6" }}>
-                      <span style={{ fontSize: 11, color: "#444", flex: 1 }}>{s.n}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: C.purple, whiteSpace: "nowrap", marginLeft: 8 }}>{fmt(s.p)}</span>
-                    </div>
-                  ))}
-                </>
-              )}
+                );
+              })}
 
               {/* Subtotal */}
               <div style={{ background: "#f7f5fa", borderRadius: 8, padding: "8px 12px", marginTop: 10, display: "flex", justifyContent: "space-between" }}>
@@ -710,15 +690,21 @@ export default function App() {
                 </div>
               )}
 
-              {/* Competitor with savings */}
+              {/* Competitor comparison — no strikethrough */}
               {hasComp && compTotal > totalFinal && (
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 12px", fontSize: 10, color: "#666", background: "#fffde7", borderRadius: 6, marginTop: 4 }}>
-                  <span>En otros laboratorios pagarías: <span style={{ textDecoration: "line-through" }}>{fmt(compTotal)}</span></span>
-                  <span style={{ fontWeight: 700, color: "#1b7a3a" }}>Ahorro {fmt(compTotal - totalFinal)}</span>
+                <div style={{ background: "#FFF9C4", borderRadius: 10, padding: "10px 14px", marginTop: 8, border: "1px solid #F9E547" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 11, color: "#333", fontWeight: 500 }}>En otros laboratorios pagarías:</span>
+                    <span style={{ fontSize: 13, color: "#666", fontWeight: 600 }}>{fmt(compTotal)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#0B8A2E" }}>Tu ahorro con Labbox:</span>
+                    <span style={{ fontSize: 17, fontWeight: 800, color: "#0B8A2E" }}>{fmt(compTotal - totalFinal)}</span>
+                  </div>
                 </div>
               )}
 
-              {/* TOTAL — big, bold, uppercase */}
+              {/* TOTAL A PAGAR — big, bold, uppercase, LAST */}
               <div style={{ background: C.purple, borderRadius: 10, padding: "12px 14px", marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 14, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Total a Pagar:</span>
                 <span style={{ color: "#fff", fontSize: 22, fontWeight: 800 }}>{fmt(totalFinal)}</span>
