@@ -498,7 +498,8 @@ export default function App() {
       const cv = JSON.stringify({
         dropdown0__1: { labels: studyNames },
         conectar_tableros__1: { item_ids: studyIds },
-        cost: totalFinal.toString()
+        cost: totalFinal.toString(),
+        date: { date: new Date().toISOString().split('T')[0] }
       }).replace(/"/g, '\\"');
 
       // 4. Create item
