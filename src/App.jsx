@@ -450,6 +450,7 @@ export default function App() {
   const [mGroups, setMGroups] = useState([]);
   const [mGroupId, setMGroupId] = useState("");
   const [mName, setMName] = useState("");
+  const [mPhone, setMPhone] = useState("");
   const [mLoading, setMLoading] = useState(false);
   const [mResult, setMResult] = useState(null);
 
@@ -499,7 +500,8 @@ export default function App() {
         dropdown0__1: { labels: studyNames },
         conectar_tableros__1: { item_ids: studyIds },
         cost: totalFinal.toString(),
-        date: { date: new Date().toISOString().split('T')[0] }
+        date: { date: new Date().toISOString().split('T')[0] },
+        dup__of_telefono62: { phone: mPhone.replace(/\D/g,""), countryShortName: "MX" }
       }).replace(/"/g, '\\"');
 
       // 4. Create item
@@ -789,25 +791,24 @@ export default function App() {
                 </div>
               )}
 
-              {/* TOTAL A PAGAR — big, bold, uppercase, LAST */}
-              <div style={{ background: C.purple, borderRadius: 10, padding: "12px 14px", marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 14, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Total a Pagar:</span>
-                <span style={{ color: "#fff", fontSize: 22, fontWeight: 800 }}>{fmt(totalFinal)}</span>
+              {/* TOTAL A PAGAR — big, bold, uppercase, MSI inside */}
+              <div style={{ background: C.purple, borderRadius: 10, padding: "12px 14px", marginTop: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 14, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Total a Pagar:</span>
+                  <span style={{ color: "#fff", fontSize: 22, fontWeight: 800 }}>{fmt(totalFinal)}</span>
+                </div>
+                {totalFinal >= 3000 && (
+                  <div style={{ textAlign: "center", marginTop: 8 }}>
+                    <span style={{ background: "rgba(238,231,250,0.25)", borderRadius: 14, padding: "4px 16px", fontSize: 11, fontWeight: 600, color: "#e0d4f5" }}>💳 MSI disponibles</span>
+                  </div>
+                )}
               </div>
 
               {/* Badges */}
               <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                 {maxAy > 0 && <div style={{ background: "#fff3e0", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: C.orangeDark }}>⏰ Ayuno: {maxAy} hrs</div>}
                 <div style={{ background: "#e8f5e9", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#2e7d32" }}>🏠 Domicilio incluido</div>
-                {totalFinal >= 3000 && <div style={{ background: "#f3e5f5", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#7b1fa2" }}>💳 MSI disponibles</div>}
               </div>
-
-              {/* MSI detail */}
-              {totalFinal >= 3000 && (
-                <div style={{ fontSize: 10, color: "#7b1fa2", marginTop: 4, fontWeight: 500 }}>
-                  O en 4 quincenas de {fmt(roundTo50(totalFinal / 4))} sin intereses.
-                </div>
-              )}
 
               {/* Collapsible indications */}
               {specInd.length > 0 && (
@@ -861,6 +862,11 @@ export default function App() {
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>Nombre del paciente</div>
                   <input type="text" value={mName} onChange={e => setMName(e.target.value)} placeholder="Nombre del paciente..."
+                    style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, fontFamily: font, boxSizing: "border-box" }} />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>WhatsApp del paciente</div>
+                  <input type="tel" value={mPhone} onChange={e => setMPhone(e.target.value)} placeholder="81 1234 5678"
                     style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, fontFamily: font, boxSizing: "border-box" }} />
                 </div>
                 <div style={{ marginBottom: 12 }}>
