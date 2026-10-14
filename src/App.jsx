@@ -348,7 +348,6 @@ function fmt(n) { return "$" + Number(n).toLocaleString("es-MX", { minimumFracti
 const C = { purple: "#280C4C", purpleLight: "#7535CA", orange: "#FC7A1D", teal: "#00EBD5", orangeDark: "#954003" };
 const font = "'Montserrat', sans-serif";
 
-// ── PACKAGE DEFINITIONS (eval in order) ──
 const KEY_MAP = {
   BH: "Biometria Hematica Completa", QS24: "Perfil Bioquimico 24 Elementos",
   TIR: "Perfil Tiroideo con TSH", VITD: "Determinacion de Vitamina D (25-hidroxi)",
@@ -382,21 +381,16 @@ function detectPackages(selected, isSocio) {
   const indFinal = isSocio ? roundTo50(indSubtotal * 0.85) : indSubtotal;
   const pkgTotal = matched.reduce((a, p) => a + p.price, 0);
   const totalFinal = pkgTotal + indFinal;
-
-  // Notices for free included studies
   const notices = [];
   const hasStudy = n => names.includes(n);
   if (hasStudy("Perfil Bioquimico 24 Elementos") && !hasStudy("Examen General de Orina")) notices.push("Incluimos Examen General de Orina sin costo adicional.");
   if (hasStudy("Perfil Bioquimico 24 Elementos") && !hasStudy("Biometria Hematica Completa")) notices.push("Incluimos Biometría Hemática sin costo adicional.");
   if (hasStudy("Perfil Hormonal Femenino Completo") && hasStudy("Perfil Tiroideo con TSH") && !hasStudy("Cortisol en Sangre")) notices.push("Incluimos Cortisol en Sangre sin costo adicional.");
-
-  // Upsell
   let upsell = null;
   if (hasStudy("Biometria Hematica Completa") && hasStudy("Perfil Tiroideo con TSH") && hasStudy("Determinacion de Vitamina D (25-hidroxi)") && !hasStudy("Perfil Bioquimico 24 Elementos")) {
     const currentSum = selected.filter(s => ["Biometria Hematica Completa","Perfil Tiroideo con TSH","Determinacion de Vitamina D (25-hidroxi)"].includes(s.n)).reduce((a,s)=>a+s.p,0);
     upsell = `Por $${2300 - currentSum} más incluyes QS24 + EGO. Check-up Tiroideo Completo en $2,300 en lugar de $${currentSum}.`;
   }
-
   return { matched, individual, indSubtotal, indFinal, pkgTotal, totalFinal, notices, upsell, consumed };
 }
 
@@ -404,26 +398,27 @@ function calcOrthinCost(selected) {
   const names = selected.map(s => s.n);
   const consumed = new Set();
   let totalCost = 0;
-  // Rule 1: QS24 → Check-Up 28 ($306.24), consumes QS24+BH+EGO
   if (names.includes("Perfil Bioquimico 24 Elementos")) {
     totalCost += 306.24;
     ["Perfil Bioquimico 24 Elementos","Biometria Hematica Completa","Examen General de Orina"].forEach(n => consumed.add(n));
   }
-  // Rule 2: PHF+TIR → Hormonal con Tiroideo I ($698.32), consumes PHF+TIR+CORT
   if (names.includes("Perfil Hormonal Femenino Completo") && names.includes("Perfil Tiroideo con TSH") && !consumed.has("Perfil Tiroideo con TSH")) {
     totalCost += 698.32;
     ["Perfil Hormonal Femenino Completo","Perfil Tiroideo con TSH","Cortisol en Sangre"].forEach(n => consumed.add(n));
   }
-  // Rest individual
-  for (const s of selected) {
-    if (!consumed.has(s.n)) totalCost += (s.co || 0);
-  }
+  for (const s of selected) { if (!consumed.has(s.n)) totalCost += (s.co || 0); }
   return totalCost;
 }
 
-// ── MONDAY.COM API ──
+// ── MONDAY.COM ──
 const MONDAY_BOARD_DIARIO = 18391336187;
 const MONDAY_BOARD_ESTUDIOS = 6714927670;
+const ALL_DIARIO_BOARDS = [
+  { year: 2022, id: 2467548914 }, { year: 2023, id: 1587343035 },
+  { year: 2024, id: 5691055183 }, { year: 2025, id: 8104979141 },
+  { year: 2026, id: 18391336187 }, { year: 2027, id: 18428784235 }
+];
+const SEARCH_COLS = ["date","estado_1","cost","fecha","texto","status","dup__of_reason","estado_17","ubicaci_n","correo"];
 
 async function mondayApi(token, query) {
   const res = await fetch("https://api.monday.com/v2", {
@@ -435,6 +430,88 @@ async function mondayApi(token, query) {
   if (data.errors) throw new Error(data.errors[0].message);
   if (data.error_message) throw new Error(data.error_message);
   return data.data;
+}
+
+function toMondayPhones(input) {
+  const d = String(input).replace(/\D/g, "");
+  const ten = d.length >= 10 ? d.slice(-10) : d;
+  return { with1: "521" + ten, without1: "52" + ten, ten };
+}
+
+function normName(s) {
+  return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\s+/g," ").trim();
+}
+
+async function searchPatient(token, phoneInput) {
+  const ph = toMondayPhones(phoneInput);
+  const allRecords = [];
+  const promises = ALL_DIARIO_BOARDS.map(async (b) => {
+    try {
+      const colIds = '["' + SEARCH_COLS.join('","') + '"]';
+      const q = `query { boards(ids: [${b.id}]) { items_page(limit: 100, query_params: { rules: [{ column_id: "dup__of_telefono62", compare_value: ["${ph.ten}"], operator: contains_text }] }) { items { name column_values(ids: ${colIds}) { id text value } } } } }`;
+      const data = await mondayApi(token, q);
+      const items = data.boards[0].items_page.items;
+      items.forEach(it => {
+        const cv = {};
+        it.column_values.forEach(c => { cv[c.id] = { text: c.text, value: c.value }; });
+        const dateStr = String(cv.date?.text || "").slice(0, 10);
+        allRecords.push({
+          nombre: it.name, year: b.year, fecha_cita: dateStr,
+          estatus: cv.estado_1?.text || "",
+          monto: parseFloat(String(cv.cost?.text || "0").replace(/[^0-9.]/g,"")) || 0,
+          f_nacimiento: cv.fecha?.text || null,
+          notas: cv.texto?.text || null,
+          zona: cv.status?.text || null,
+          media: cv.dup__of_reason?.text || null,
+          razon: cv.estado_17?.text || null,
+          ubicacion_raw: cv.ubicaci_n?.value || null,
+          correo: cv.correo?.text || null,
+        });
+      });
+    } catch (e) { console.log("Error board " + b.year, e); }
+  });
+  await Promise.all(promises);
+
+  if (!allRecords.length) return null;
+
+  // Group by normalized name
+  const groups = {};
+  allRecords.forEach(r => {
+    const k = normName(r.nombre);
+    if (!groups[k]) groups[k] = { nombre: r.nombre, records: [] };
+    groups[k].records.push(r);
+  });
+
+  // Find patient with most Done visits
+  let bestKey = null, bestDone = -1;
+  Object.keys(groups).forEach(k => {
+    const doneCount = groups[k].records.filter(r => r.estatus === "Done").length;
+    if (doneCount > bestDone) { bestDone = doneCount; bestKey = k; }
+  });
+
+  const hasDone = bestDone > 0;
+  const patientName = groups[bestKey].nombre;
+  const allSorted = allRecords.filter(r => r.fecha_cita).sort((a, b) => a.fecha_cita < b.fecha_cita ? 1 : -1);
+  const patientSorted = groups[bestKey].records.filter(r => r.fecha_cita).sort((a, b) => a.fecha_cita < b.fecha_cita ? 1 : -1);
+  const latest = allSorted[0] || {};
+  const patientLatest = patientSorted[0] || {};
+
+  // Find ubicacion from patient with most visits
+  const ubicRec = patientSorted.find(r => r.ubicacion_raw && r.ubicacion_raw !== "null" && r.ubicacion_raw !== "{}");
+
+  return {
+    nombre: patientName,
+    visitas: bestDone,
+    hasDone,
+    f_nacimiento: patientLatest.f_nacimiento || null,
+    notas: patientLatest.notas || null,
+    zona: latest.zona || null,
+    media: latest.media || null,
+    razon: latest.razon || null,
+    ubicacion_raw: ubicRec?.ubicacion_raw || null,
+    correo: latest.correo || null,
+    totalRecords: allRecords.length
+  };
 }
 
 export default function App() {
@@ -453,67 +530,8 @@ export default function App() {
   const [mPhone, setMPhone] = useState("");
   const [mLoading, setMLoading] = useState(false);
   const [mResult, setMResult] = useState(null);
-
-  const openMonday = async () => {
-    setShowMonday(true); setMResult(null); setMName("");
-    if (mToken) {
-      try {
-        const d = await mondayApi(mToken, `query { boards(ids: [${MONDAY_BOARD_DIARIO}]) { groups { id title } } }`);
-        setMGroups(d.boards[0].groups);
-        if (!mGroupId && d.boards[0].groups.length) setMGroupId(d.boards[0].groups[0].id);
-      } catch { setMResult({ error: "Token inválido. Revisa tu API token de Monday.com" }); }
-    }
-  };
-
-  const saveToken = async () => {
-    try { localStorage.setItem("lbx_mt", mToken); } catch {}
-    try {
-      const d = await mondayApi(mToken, `query { boards(ids: [${MONDAY_BOARD_DIARIO}]) { groups { id title } } }`);
-      setMGroups(d.boards[0].groups);
-      if (d.boards[0].groups.length) setMGroupId(d.boards[0].groups[0].id);
-      setMResult(null);
-    } catch { setMResult({ error: "Token inválido" }); }
-  };
-
-  const sendToMonday = async () => {
-    if (!mName.trim() || !mGroupId) return;
-    setMLoading(true);
-    try {
-      // 1. Fetch study IDs from Estudios Clinicos 2024
-      const sd = await mondayApi(mToken, `query { boards(ids: [${MONDAY_BOARD_ESTUDIOS}]) { items_page(limit: 500) { cursor items { id name } } } }`);
-      let allItems = sd.boards[0].items_page.items;
-      let cursor = sd.boards[0].items_page.cursor;
-      while (cursor) {
-        const nd = await mondayApi(mToken, `query { next_items_page(limit: 500, cursor: "${cursor}") { cursor items { id name } } }`);
-        allItems = [...allItems, ...nd.next_items_page.items];
-        cursor = nd.next_items_page.cursor;
-      }
-      const nameMap = {};
-      allItems.forEach(i => { nameMap[i.name.toLowerCase().trim()] = parseInt(i.id); });
-
-      // 2. Match selected studies
-      const studyNames = selected.map(s => s.n);
-      const studyIds = selected.map(s => nameMap[s.n.toLowerCase().trim()]).filter(Boolean);
-
-      // 3. Build column values
-      const cv = JSON.stringify({
-        dropdown0__1: { labels: studyNames },
-        conectar_tableros__1: { item_ids: studyIds },
-        cost: totalFinal.toString(),
-        date: { date: new Date().toISOString().split('T')[0] },
-        dup__of_telefono62: { phone: mPhone.replace(/\D/g,""), countryShortName: "MX" }
-      }).replace(/"/g, '\\"');
-
-      // 4. Create item
-      const result = await mondayApi(mToken, `mutation { create_item(board_id: ${MONDAY_BOARD_DIARIO}, group_id: "${mGroupId}", item_name: "${mName.replace(/"/g, '\\"')}", column_values: "${cv}", create_labels_if_missing: true) { id } }`);
-
-      const itemId = result.create_item.id;
-      setMResult({ success: true, url: `https://deltalabbox.monday.com/boards/${MONDAY_BOARD_DIARIO}/pulses/${itemId}` });
-    } catch (e) {
-      setMResult({ error: e.message || "Error al crear elemento" });
-    }
-    setMLoading(false);
-  };
+  const [mPatient, setMPatient] = useState(null);
+  const [mSearching, setMSearching] = useState(false);
 
   useState(() => {
     if (typeof window === "undefined") return;
@@ -538,21 +556,103 @@ export default function App() {
   const pkgResult = useMemo(() => detectPackages(selected, isSocio), [selected, isSocio]);
   const orthinCost = useMemo(() => calcOrthinCost(selected), [selected]);
   const { matched: pkgs, individual: indStudies, indSubtotal, indFinal, pkgTotal, totalFinal, notices, upsell, consumed } = pkgResult;
-
-  // Competitor comparison (on raw prices, not package)
   const rawSubtotal = selected.reduce((s, x) => s + x.p, 0);
   const compTotal = selected.reduce((s, x) => {
     const pp = [x.ch, x.mo, x.sw, x.ts].filter(p => p && p > 0);
     return pp.length === 0 ? s : s + pp.reduce((a, b) => a + b, 0) / pp.length;
   }, 0);
   const hasComp = selected.some(s => [s.ch, s.mo, s.sw, s.ts].some(p => p && p > 0));
-
   const margin = totalFinal > 0 ? ((totalFinal - orthinCost) / totalFinal * 100) : 0;
   const profit = totalFinal - orthinCost;
   const specInd = useMemo(() => selected.filter(s => s.ind && !s.ind.includes("No requiere") && s.ind.trim()), [selected]);
   const maxAy = useMemo(() => { const a = selected.map(s => s.ay).filter(a => a > 0); return a.length ? Math.max(...a) : 0; }, [selected]);
 
-  // ── Shared totals section (used in desktop + mobile) ──
+  const openMonday = async () => {
+    setShowMonday(true); setMResult(null); setMPatient(null);
+    if (mToken) {
+      try {
+        const d = await mondayApi(mToken, `query { boards(ids: [${MONDAY_BOARD_DIARIO}]) { groups { id title } } }`);
+        setMGroups(d.boards[0].groups);
+        if (!mGroupId && d.boards[0].groups.length) setMGroupId(d.boards[0].groups[0].id);
+      } catch { setMResult({ error: "Token inválido" }); }
+    }
+  };
+
+  const saveToken = async () => {
+    try { localStorage.setItem("lbx_mt", mToken); } catch {}
+    try {
+      const d = await mondayApi(mToken, `query { boards(ids: [${MONDAY_BOARD_DIARIO}]) { groups { id title } } }`);
+      setMGroups(d.boards[0].groups);
+      if (d.boards[0].groups.length) setMGroupId(d.boards[0].groups[0].id);
+      setMResult(null);
+    } catch { setMResult({ error: "Token inválido" }); }
+  };
+
+  const doSearch = async () => {
+    if (!mPhone || mPhone.replace(/\D/g,"").length < 10) return;
+    setMSearching(true); setMPatient(null);
+    try {
+      const result = await searchPatient(mToken, mPhone);
+      if (result) {
+        setMPatient(result);
+        setMName(result.nombre);
+      } else {
+        setMPatient({ notFound: true });
+      }
+    } catch (e) { console.log("Search error", e); }
+    setMSearching(false);
+  };
+
+  const sendToMonday = async () => {
+    if (!mName.trim() || !mGroupId) return;
+    setMLoading(true);
+    try {
+      const sd = await mondayApi(mToken, `query { boards(ids: [${MONDAY_BOARD_ESTUDIOS}]) { items_page(limit: 500) { cursor items { id name } } } }`);
+      let allItems = sd.boards[0].items_page.items;
+      let cursor = sd.boards[0].items_page.cursor;
+      while (cursor) {
+        const nd = await mondayApi(mToken, `query { next_items_page(limit: 500, cursor: "${cursor}") { cursor items { id name } } }`);
+        allItems = [...allItems, ...nd.next_items_page.items];
+        cursor = nd.next_items_page.cursor;
+      }
+      const nameMap = {};
+      allItems.forEach(i => { nameMap[i.name.toLowerCase().trim()] = parseInt(i.id); });
+      const studyNames = selected.map(s => s.n);
+      const studyIds = selected.map(s => nameMap[s.n.toLowerCase().trim()]).filter(Boolean);
+
+      // Build column values
+      const colObj = {
+        dropdown0__1: { labels: studyNames },
+        conectar_tableros__1: { item_ids: studyIds },
+        cost: totalFinal.toString(),
+        date: { date: new Date().toISOString().split("T")[0] },
+        dup__of_telefono62: { phone: mPhone.replace(/\D/g,""), countryShortName: "MX" },
+        estado_15: { label: (mPatient && mPatient.hasDone) ? "Recurrent" : "New" }
+      };
+
+      // Add patient data if found
+      if (mPatient && !mPatient.notFound) {
+        if (mPatient.f_nacimiento) colObj.fecha = { date: mPatient.f_nacimiento.slice(0,10) };
+        if (mPatient.notas) colObj.texto = mPatient.notas;
+        if (mPatient.zona) colObj.status = { label: mPatient.zona };
+        if (mPatient.media) colObj.dup__of_reason = { label: mPatient.media };
+        if (mPatient.razon) colObj.estado_17 = { label: mPatient.razon };
+        if (mPatient.correo) colObj.correo = { email: mPatient.correo, text: mPatient.correo };
+        if (mPatient.ubicacion_raw) {
+          try { const loc = JSON.parse(mPatient.ubicacion_raw); if (loc.lat) colObj.ubicaci_n = loc; } catch {}
+        }
+      }
+
+      const cv = JSON.stringify(colObj).replace(/"/g, '\\"');
+      const result = await mondayApi(mToken, `mutation { create_item(board_id: ${MONDAY_BOARD_DIARIO}, group_id: "${mGroupId}", item_name: "${mName.replace(/"/g, '\\"')}", column_values: "${cv}", create_labels_if_missing: true) { id } }`);
+      const itemId = result.create_item.id;
+      setMResult({ success: true, url: `https://deltalabbox.monday.com/boards/${MONDAY_BOARD_DIARIO}/pulses/${itemId}` });
+    } catch (e) {
+      setMResult({ error: e.message || "Error al crear elemento" });
+    }
+    setMLoading(false);
+  };
+
   const TotalsSection = ({ fs = 1 }) => (
     <>
       {pkgs.length > 0 && pkgs.map(p => (
@@ -579,12 +679,9 @@ export default function App() {
     </>
   );
 
-  // ── RENDER ──
   return (
     <div style={{ fontFamily: font, background: "#f7f5fa", minHeight: "100vh" }}>
       <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-
-      {/* Header */}
       <div style={{ background: `linear-gradient(135deg, ${C.purple} 0%, ${C.purpleLight} 100%)`, padding: isMobile ? "10px 16px" : "14px 24px", display: "flex", alignItems: "center", gap: 8, position: "sticky", top: 0, zIndex: 50 }}>
         <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: "#fff", letterSpacing: -0.5 }}>lab</span>
         <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: C.orange, letterSpacing: -0.5, marginLeft: -6 }}>box</span>
@@ -600,12 +697,8 @@ export default function App() {
       </div>
 
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", maxWidth: 1400, margin: "0 auto", minHeight: isMobile ? "auto" : "calc(100vh - 50px)" }}>
-
-        {/* ── LEFT: Study List ── */}
         <div style={{ flex: 1, padding: isMobile ? "10px 12px" : "14px 18px", overflowY: isMobile ? "visible" : "auto", maxHeight: isMobile ? "none" : "calc(100vh - 50px)", paddingBottom: isMobile && selected.length ? 80 : 14 }}>
-          <input type="text" placeholder="Buscar estudios por nombre o sinónimo..." value={search} onChange={e => setSearch(e.target.value)}
-            style={{ width: "100%", padding: isMobile ? "10px 12px" : "10px 14px", border: "2px solid #e0dce6", borderRadius: 8, fontSize: 14, background: "#fff", outline: "none", boxSizing: "border-box", fontFamily: font }}
-            onFocus={e => e.target.style.borderColor = C.purpleLight} onBlur={e => e.target.style.borderColor = "#e0dce6"} />
+          <input type="text" placeholder="Buscar estudios por nombre o sinónimo..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: "100%", padding: isMobile ? "10px 12px" : "10px 14px", border: "2px solid #e0dce6", borderRadius: 8, fontSize: 14, background: "#fff", outline: "none", boxSizing: "border-box", fontFamily: font }} onFocus={e => e.target.style.borderColor = C.purpleLight} onBlur={e => e.target.style.borderColor = "#e0dce6"} />
           <div style={{ fontSize: 10, color: "#aaa", marginTop: 6, marginBottom: 4 }}>{filtered.length} estudios</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {filtered.map(s => {
@@ -627,7 +720,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* ── RIGHT PANEL / MOBILE ── */}
         {isMobile ? (
           <>
             {selected.length > 0 && !showCart && (
@@ -649,9 +741,7 @@ export default function App() {
                   <div style={{ padding: "8px 18px" }}>
                     {selected.map(s => (
                       <div key={s.n} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f5f3f8" }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 12, color: consumed.has(s.n) ? "#1b7a3a" : "#444" }}>{s.n} {consumed.has(s.n) && <span style={{ fontSize: 9, fontWeight: 600 }}>📦</span>}</div>
-                        </div>
+                        <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: consumed.has(s.n) ? "#1b7a3a" : "#444" }}>{s.n} {consumed.has(s.n) && <span style={{ fontSize: 9, fontWeight: 600 }}>📦</span>}</div></div>
                         <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, whiteSpace: "nowrap" }}>{fmt(s.p)}</div>
                         <button onClick={() => rem(s.n)} style={{ marginLeft: 8, background: "#fee", border: "none", borderRadius: "50%", width: 24, height: 24, color: "#c62828", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
                       </div>
@@ -663,7 +753,6 @@ export default function App() {
                     {maxAy > 0 && <div style={{ marginTop: 4, fontSize: 11, color: C.orangeDark, fontWeight: 600 }}>⏰ Ayuno: {maxAy} horas</div>}
                     <button onClick={() => { setShowCart(false); setShowQuote(true); }} style={{ width: "100%", padding: "12px", background: `linear-gradient(135deg, ${C.orangeDark}, ${C.orange})`, color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 10, fontFamily: font }}>Ver Cotización para Paciente</button>
                   </div>
-                  {/* Internal mobile */}
                   <div style={{ padding: "8px 18px 14px", background: "#faf8fc", borderTop: "1px dashed #e0dce6" }}>
                     <div style={{ fontSize: 9, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Análisis Interno</div>
                     {upsell && <div style={{ fontSize: 10, color: C.orange, fontWeight: 600, marginBottom: 4, background: "#fff8f0", padding: "4px 6px", borderRadius: 4 }}>💡 {upsell}</div>}
@@ -682,7 +771,6 @@ export default function App() {
             )}
           </>
         ) : (
-          /* ── DESKTOP RIGHT PANEL ── */
           <div style={{ width: 380, background: "#fff", borderLeft: "1px solid #e8e4ee", display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 50px)", overflowY: "auto" }}>
             <div style={{ padding: "12px 16px", borderBottom: "1px solid #eee", background: "#faf8fc" }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: C.purple }}>Estudios Seleccionados ({selected.length})</div>
@@ -692,15 +780,12 @@ export default function App() {
                 <div style={{ padding: "4px 16px", flex: 1 }}>
                   {selected.map(s => (
                     <div key={s.n} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #f5f3f8" }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 11, color: consumed.has(s.n) ? "#1b7a3a" : "#444", paddingRight: 4 }}>{s.n} {consumed.has(s.n) && <span style={{ fontSize: 8, fontWeight: 600 }}>📦</span>}</div>
-                      </div>
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: consumed.has(s.n) ? "#1b7a3a" : "#444", paddingRight: 4 }}>{s.n} {consumed.has(s.n) && <span style={{ fontSize: 8, fontWeight: 600 }}>📦</span>}</div></div>
                       <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, whiteSpace: "nowrap" }}>{fmt(s.p)}</div>
                       <button onClick={() => rem(s.n)} style={{ marginLeft: 4, background: "none", border: "none", color: "#ccc", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>×</button>
                     </div>
                   ))}
                 </div>
-                {/* Notices */}
                 {notices.length > 0 && (
                   <div style={{ padding: "6px 16px", background: "#f0faf3" }}>
                     {notices.map((n, i) => <div key={i} style={{ fontSize: 10, color: "#1b7a3a", fontWeight: 600, marginBottom: 2 }}>✓ {n}</div>)}
@@ -711,7 +796,6 @@ export default function App() {
                   {maxAy > 0 && <div style={{ marginTop: 4, fontSize: 10, color: C.orangeDark, fontWeight: 600 }}>⏰ Ayuno: {maxAy} horas</div>}
                   <button onClick={() => setShowQuote(true)} style={{ width: "100%", padding: "10px", background: `linear-gradient(135deg, ${C.orangeDark}, ${C.orange})`, color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 12, fontFamily: font }}>Ver Cotización para Paciente</button>
                 </div>
-                {/* Internal */}
                 <div style={{ padding: "8px 16px", background: "#faf8fc", borderTop: "1px dashed #e0dce6" }}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Análisis Interno</div>
                   {upsell && <div style={{ fontSize: 10, color: C.orange, fontWeight: 600, marginBottom: 6, background: "#fff8f0", padding: "6px 8px", borderRadius: 4, border: "1px solid #ffe0c0" }}>💡 Upsell: {upsell}</div>}
@@ -740,7 +824,7 @@ export default function App() {
         )}
       </div>
 
-      {/* ── QUOTE MODAL (patient-facing) ── */}
+      {/* QUOTE MODAL */}
       {showQuote && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setShowQuote(false); setShowInd(false); }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? "20px 20px 0 0" : 16, width: isMobile ? "100%" : 440, maxHeight: isMobile ? "95vh" : "92vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(40,12,76,0.3)" }}>
@@ -748,7 +832,6 @@ export default function App() {
               <div><span style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>lab</span><span style={{ fontSize: 26, fontWeight: 800, color: C.orange }}>box</span></div>
               <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 500, marginTop: 1 }}>Estudios de Laboratorio · 100% a Domicilio</div>
             </div>
-
             <div style={{ padding: "12px 24px 8px" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 8 }}>Resumen de Estudios</div>
               {selected.map(s => {
@@ -763,21 +846,15 @@ export default function App() {
                   </div>
                 );
               })}
-
-              {/* Subtotal */}
               <div style={{ background: "#f7f5fa", borderRadius: 8, padding: "8px 12px", marginTop: 10, display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 11, color: "#666", fontWeight: 500 }}>Subtotal:</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>{fmt(rawSubtotal)}</span>
               </div>
-
-              {/* Socio discount */}
               {isSocio && (
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 12px", color: "#0B8A2E", fontSize: 10, fontWeight: 700 }}>
                   <span>Descuento médico socio:</span><span>-{fmt(rawSubtotal - totalFinal)}</span>
                 </div>
               )}
-
-              {/* Competitor comparison — no strikethrough */}
               {hasComp && compTotal > totalFinal && (
                 <div style={{ background: "#FFF9C4", borderRadius: 10, padding: "10px 14px", marginTop: 8, border: "1px solid #F9E547" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -790,8 +867,6 @@ export default function App() {
                   </div>
                 </div>
               )}
-
-              {/* TOTAL A PAGAR — big, bold, uppercase, MSI inside */}
               <div style={{ background: C.purple, borderRadius: 10, padding: "12px 14px", marginTop: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 14, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Total a Pagar:</span>
@@ -803,14 +878,10 @@ export default function App() {
                   </div>
                 )}
               </div>
-
-              {/* Badges */}
               <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                 {maxAy > 0 && <div style={{ background: "#fff3e0", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: C.orangeDark }}>⏰ Ayuno: {maxAy} hrs</div>}
                 <div style={{ background: "#e8f5e9", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 600, color: "#2e7d32" }}>🏠 Domicilio incluido</div>
               </div>
-
-              {/* Collapsible indications */}
               {specInd.length > 0 && (
                 <div style={{ marginTop: 10, borderTop: "1px solid #f0eef4" }}>
                   <div onClick={() => setShowInd(!showInd)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0 4px", cursor: "pointer" }}>
@@ -828,51 +899,65 @@ export default function App() {
                   )}
                 </div>
               )}
-
               <div style={{ marginTop: 6, textAlign: "center", fontSize: 9, color: "#ccc", padding: "4px 0" }}>www.labbox.com.mx</div>
             </div>
             <button onClick={() => { setShowQuote(false); setShowInd(false); }} style={{ position: "sticky", bottom: 0, width: "100%", padding: "10px", background: "#f5f3f8", color: "#999", border: "none", borderRadius: isMobile ? 0 : "0 0 16px 16px", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>Cerrar</button>
           </div>
         </div>
       )}
-      {/* ── MONDAY.COM MODAL ── */}
+
+      {/* MONDAY MODAL */}
       {showMonday && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 1100 }} onClick={() => setShowMonday(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? "20px 20px 0 0" : 16, width: isMobile ? "100%" : 400, maxHeight: isMobile ? "80vh" : "70vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(40,12,76,0.3)", padding: 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? "20px 20px 0 0" : 16, width: isMobile ? "100%" : 420, maxHeight: isMobile ? "85vh" : "80vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(40,12,76,0.3)", padding: 24 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: C.purple }}>📋 Enviar a Monday.com</div>
               <button onClick={() => setShowMonday(false)} style={{ background: "none", border: "none", fontSize: 20, color: "#aaa", cursor: "pointer" }}>✕</button>
             </div>
 
-            {/* Token input (if not set or groups empty) */}
             {(!mToken || mGroups.length === 0) && !mResult?.success && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 11, color: "#666", marginBottom: 6 }}>API Token de Monday.com</div>
-                <div style={{ fontSize: 9, color: "#999", marginBottom: 6 }}>Ve a monday.com → Avatar → Developers → My access tokens</div>
-                <input type="password" value={mToken} onChange={e => setMToken(e.target.value)} placeholder="Pega tu token aquí..."
-                  style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 12, fontFamily: font, boxSizing: "border-box" }} />
-                <button onClick={saveToken} disabled={!mToken}
-                  style={{ width: "100%", padding: "10px", background: mToken ? C.purple : "#ddd", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: mToken ? "pointer" : "default", marginTop: 8, fontFamily: font }}>Conectar</button>
+                <div style={{ fontSize: 9, color: "#999", marginBottom: 6 }}>monday.com → Avatar → Developers → My access tokens</div>
+                <input type="password" value={mToken} onChange={e => setMToken(e.target.value)} placeholder="Pega tu token aquí..." style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 12, fontFamily: font, boxSizing: "border-box" }} />
+                <button onClick={saveToken} disabled={!mToken} style={{ width: "100%", padding: "10px", background: mToken ? C.purple : "#ddd", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: mToken ? "pointer" : "default", marginTop: 8, fontFamily: font }}>Conectar</button>
               </div>
             )}
 
-            {/* Form (when token works) */}
             {mGroups.length > 0 && !mResult?.success && (
               <div>
                 <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>Nombre del paciente</div>
-                  <input type="text" value={mName} onChange={e => setMName(e.target.value)} placeholder="Nombre del paciente..."
-                    style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, fontFamily: font, boxSizing: "border-box" }} />
-                </div>
-                <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>WhatsApp del paciente</div>
-                  <input type="tel" value={mPhone} onChange={e => setMPhone(e.target.value)} placeholder="81 1234 5678"
-                    style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, fontFamily: font, boxSizing: "border-box" }} />
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input type="tel" value={mPhone} onChange={e => setMPhone(e.target.value)} placeholder="81 1234 5678" style={{ flex: 1, padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, fontFamily: font, boxSizing: "border-box" }} />
+                    <button onClick={doSearch} disabled={mSearching || !mPhone} style={{ padding: "10px 14px", background: mSearching ? "#ccc" : C.purpleLight, color: "#fff", border: "none", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font, whiteSpace: "nowrap" }}>{mSearching ? "..." : "🔍 Buscar"}</button>
+                  </div>
+                </div>
+
+                {mPatient && !mPatient.notFound && (
+                  <div style={{ background: "#f0faf3", borderRadius: 8, padding: "8px 10px", marginBottom: 12, border: "1px solid #d5f0dd" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#1b7a3a" }}>✓ Paciente encontrado — {mPatient.visitas} visita{mPatient.visitas !== 1 ? "s" : ""}</div>
+                    <div style={{ fontSize: 9, color: "#666", marginTop: 3 }}>
+                      {mPatient.zona && <span style={{ marginRight: 8 }}>📍 {mPatient.zona}</span>}
+                      {mPatient.media && <span style={{ marginRight: 8 }}>📢 {mPatient.media}</span>}
+                      {mPatient.razon && <span>🏥 {mPatient.razon}</span>}
+                    </div>
+                    {mPatient.notas && <div style={{ fontSize: 9, color: "#888", marginTop: 2 }}>📝 {mPatient.notas.slice(0, 80)}{mPatient.notas.length > 80 ? "..." : ""}</div>}
+                    <div style={{ fontSize: 9, color: C.purpleLight, marginTop: 2, fontWeight: 600 }}>{mPatient.hasDone ? "🔁 Recurrente" : "🆕 Nuevo"}</div>
+                  </div>
+                )}
+
+                {mPatient && mPatient.notFound && (
+                  <div style={{ background: "#fff8e1", borderRadius: 8, padding: "8px 10px", marginBottom: 12, border: "1px solid #ffe082", fontSize: 11, color: "#f57f17" }}>🆕 Paciente nuevo — no se encontró historial</div>
+                )}
+
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>Nombre del paciente</div>
+                  <input type="text" value={mName} onChange={e => setMName(e.target.value)} placeholder="Nombre del paciente..." style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, fontFamily: font, boxSizing: "border-box" }} />
                 </div>
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>Grupo (mes)</div>
-                  <select value={mGroupId} onChange={e => setMGroupId(e.target.value)}
-                    style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, fontFamily: font, boxSizing: "border-box", background: "#fff" }}>
+                  <select value={mGroupId} onChange={e => setMGroupId(e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, fontFamily: font, boxSizing: "border-box", background: "#fff" }}>
                     {mGroups.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
                   </select>
                 </div>
@@ -880,14 +965,12 @@ export default function App() {
                   <div><strong>{selected.length} estudios</strong> · Total: {fmt(totalFinal)}</div>
                   <div style={{ marginTop: 4, color: "#bbb", fontSize: 9 }}>{selected.map(s => s.n).join(", ")}</div>
                 </div>
-                <button onClick={sendToMonday} disabled={mLoading || !mName.trim()}
-                  style={{ width: "100%", padding: "12px", background: mLoading || !mName.trim() ? "#ccc" : "#0B8A2E", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: mLoading ? "wait" : "pointer", fontFamily: font }}>
+                <button onClick={sendToMonday} disabled={mLoading || !mName.trim()} style={{ width: "100%", padding: "12px", background: mLoading || !mName.trim() ? "#ccc" : "#0B8A2E", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: mLoading ? "wait" : "pointer", fontFamily: font }}>
                   {mLoading ? "Creando..." : "Crear en Monday.com"}
                 </button>
               </div>
             )}
 
-            {/* Result */}
             {mResult?.success && (
               <div style={{ textAlign: "center", padding: "16px 0" }}>
                 <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
@@ -897,11 +980,8 @@ export default function App() {
               </div>
             )}
 
-            {/* Error */}
             {mResult?.error && (
-              <div style={{ background: "#fef0f0", padding: "10px", borderRadius: 6, marginTop: 8, fontSize: 11, color: "#c62828" }}>
-                ⚠️ {mResult.error}
-              </div>
+              <div style={{ background: "#fef0f0", padding: "10px", borderRadius: 6, marginTop: 8, fontSize: 11, color: "#c62828" }}>⚠️ {mResult.error}</div>
             )}
           </div>
         </div>
