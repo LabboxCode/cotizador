@@ -626,7 +626,7 @@ export default function App() {
         conectar_tableros__1: { item_ids: studyIds },
         cost: totalFinal.toString(),
         date: { date: new Date().toISOString().split("T")[0] },
-        dup__of_telefono62: { phone: mPhone.replace(/\D/g,""), countryShortName: "MX" },
+                dup__of_telefono62: { phone: (() => { const d = mPhone.replace(/\D/g,""); if (d.length === 10) return "521" + d; if (d.length === 12 && d.startsWith("52")) return "521" + d.slice(2); return d; })(), countryShortName: "MX" },
         estado_15: { label: (mPatient && mPatient.hasDone) ? "Recurrent" : "New" }
       };
 
