@@ -459,12 +459,13 @@ async function searchPatient(token, phoneInput) {
           nombre: it.name, year: b.year, fecha_cita: dateStr,
           estatus: cv.estado_1?.text || "",
           monto: parseFloat(String(cv.cost?.text || "0").replace(/[^0-9.]/g,"")) || 0,
-          f_nacimiento: cv.fecha?.text || null,
+          f_nacimiento: cv.fecha?.text || cv.fecha?.value?.replace(/["{} ]/g,"").match(/date:(\d{4}-\d{2}-\d{2})/)?.[1] || null,
           notas: cv.texto?.text || null,
           zona: cv.status?.text || null,
           media: cv.dup__of_reason?.text || null,
           razon: cv.estado_17?.text || null,
           ubicacion_raw: cv.ubicaci_n?.value || null,
+          ubicacion_text: cv.ubicaci_n?.text || null,
           correo: cv.correo?.text || null,
         });
       });
@@ -493,23 +494,28 @@ async function searchPatient(token, phoneInput) {
   const patientName = groups[bestKey].nombre;
   const allSorted = allRecords.filter(r => r.fecha_cita).sort((a, b) => a.fecha_cita < b.fecha_cita ? 1 : -1);
   const patientSorted = groups[bestKey].records.filter(r => r.fecha_cita).sort((a, b) => a.fecha_cita < b.fecha_cita ? 1 : -1);
-  const latest = allSorted[0] || {};
-  const patientLatest = patientSorted[0] || {};
 
-  // Find ubicacion from patient with most visits
-  const ubicRec = patientSorted.find(r => r.ubicacion_raw && r.ubicacion_raw !== "null" && r.ubicacion_raw !== "{}");
+  // Scan ALL records (most recent first) for each field — not just the latest
+  const findVal = (records, field) => {
+    for (const r of records) {
+      const v = r[field];
+      if (v && v !== "null" && v !== "{}" && String(v).trim()) return v;
+    }
+    return null;
+  };
 
   return {
     nombre: patientName,
     visitas: bestDone,
     hasDone,
-    f_nacimiento: patientLatest.f_nacimiento || null,
-    notas: patientLatest.notas || null,
-    zona: latest.zona || null,
-    media: latest.media || null,
-    razon: latest.razon || null,
-    ubicacion_raw: ubicRec?.ubicacion_raw || null,
-    correo: latest.correo || null,
+    f_nacimiento: findVal(patientSorted, 'f_nacimiento'),
+    notas: findVal(patientSorted, 'notas'),
+    zona: findVal(allSorted, 'zona'),
+    media: findVal(allSorted, 'media'),
+    razon: findVal(allSorted, 'razon'),
+    ubicacion_raw: findVal(allSorted, 'ubicacion_raw'),
+    ubicacion_text: findVal(allSorted, 'ubicacion_text'),
+    correo: findVal(allSorted, 'correo'),
     totalRecords: allRecords.length
   };
 }
@@ -620,27 +626,43 @@ export default function App() {
       const studyNames = selected.map(s => s.n);
       const studyIds = selected.map(s => nameMap[s.n.toLowerCase().trim()]).filter(Boolean);
 
+      // Normalize phone to 521 + 10 digits
+      const rawDigits = mPhone.replace(/\D/g,"");
+      let normalizedPhone = rawDigits;
+      if (rawDigits.length === 10) normalizedPhone = "521" + rawDigits;
+      else if (rawDigits.length === 12 && rawDigits.startsWith("52")) normalizedPhone = "521" + rawDigits.slice(2);
+      else if (rawDigits.length === 13 && rawDigits.startsWith("521")) normalizedPhone = rawDigits;
+
       // Build column values
       const colObj = {
         dropdown0__1: { labels: studyNames },
         conectar_tableros__1: { item_ids: studyIds },
         cost: totalFinal.toString(),
         date: { date: new Date().toISOString().split("T")[0] },
-                dup__of_telefono62: { phone: (() => { const d = mPhone.replace(/\D/g,""); if (d.length === 10) return "521" + d; if (d.length === 12 && d.startsWith("52")) return "521" + d.slice(2); return d; })(), countryShortName: "MX" },
+        dup__of_telefono62: { phone: normalizedPhone, countryShortName: "MX" },
         estado_15: { label: (mPatient && mPatient.hasDone) ? "Recurrent" : "New" }
       };
 
       // Add patient data if found
       if (mPatient && !mPatient.notFound) {
+        console.log("[Cotizador] Patient data to send:", JSON.stringify(mPatient));
         if (mPatient.f_nacimiento) colObj.fecha = { date: mPatient.f_nacimiento.slice(0,10) };
         if (mPatient.notas) colObj.texto = mPatient.notas;
         if (mPatient.zona) colObj.status = { label: mPatient.zona };
         if (mPatient.media) colObj.dup__of_reason = { label: mPatient.media };
         if (mPatient.razon) colObj.estado_17 = { label: mPatient.razon };
         if (mPatient.correo) colObj.correo = { email: mPatient.correo, text: mPatient.correo };
+        // Location: try value (JSON) first, then text fallback
+        let locSet = false;
         if (mPatient.ubicacion_raw) {
-          try { const loc = JSON.parse(mPatient.ubicacion_raw); if (loc.lat) colObj.ubicaci_n = loc; } catch {}
+          try { const loc = JSON.parse(mPatient.ubicacion_raw); if (loc.lat) { colObj.ubicaci_n = loc; locSet = true; } } catch {}
         }
+        if (!locSet && mPatient.ubicacion_text) {
+          colObj.ubicaci_n = { address: mPatient.ubicacion_text };
+        }
+        console.log("[Cotizador] Final column_values:", JSON.stringify(colObj));
+      } else {
+        console.log("[Cotizador] No patient data - mPatient:", mPatient);
       }
 
       const cv = JSON.stringify(colObj).replace(/"/g, '\\"');
@@ -936,14 +958,21 @@ export default function App() {
 
                 {mPatient && !mPatient.notFound && (
                   <div style={{ background: "#f0faf3", borderRadius: 8, padding: "8px 10px", marginBottom: 12, border: "1px solid #d5f0dd" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#1b7a3a" }}>✓ Paciente encontrado — {mPatient.visitas} visita{mPatient.visitas !== 1 ? "s" : ""}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#1b7a3a" }}>✓ Paciente encontrado — {mPatient.visitas} visita{mPatient.visitas !== 1 ? "s" : ""} Done ({mPatient.totalRecords} registro{mPatient.totalRecords !== 1 ? "s" : ""} total)</div>
                     <div style={{ fontSize: 9, color: "#666", marginTop: 3 }}>
                       {mPatient.zona && <span style={{ marginRight: 8 }}>📍 {mPatient.zona}</span>}
                       {mPatient.media && <span style={{ marginRight: 8 }}>📢 {mPatient.media}</span>}
                       {mPatient.razon && <span>🏥 {mPatient.razon}</span>}
                     </div>
+                    {mPatient.f_nacimiento && <div style={{ fontSize: 9, color: "#666", marginTop: 2 }}>🎂 {mPatient.f_nacimiento}</div>}
+                    {mPatient.correo && <div style={{ fontSize: 9, color: "#666", marginTop: 2 }}>✉️ {mPatient.correo}</div>}
+                    {(mPatient.ubicacion_text || mPatient.ubicacion_raw) && <div style={{ fontSize: 9, color: "#666", marginTop: 2 }}>📍 {(mPatient.ubicacion_text || "ubicación guardada").slice(0, 60)}...</div>}
                     {mPatient.notas && <div style={{ fontSize: 9, color: "#888", marginTop: 2 }}>📝 {mPatient.notas.slice(0, 80)}{mPatient.notas.length > 80 ? "..." : ""}</div>}
                     <div style={{ fontSize: 9, color: C.purpleLight, marginTop: 2, fontWeight: 600 }}>{mPatient.hasDone ? "🔁 Recurrente" : "🆕 Nuevo"}</div>
+                    {/* Debug: show what will be sent */}
+                    <div style={{ fontSize: 8, color: "#bbb", marginTop: 4, borderTop: "1px dashed #d5f0dd", paddingTop: 3 }}>
+                      Datos: {[mPatient.f_nacimiento && "nacimiento", mPatient.zona && "zona", mPatient.correo && "correo", mPatient.media && "media", mPatient.razon && "razón", (mPatient.ubicacion_raw || mPatient.ubicacion_text) && "ubicación"].filter(Boolean).join(", ") || "ninguno"}
+                    </div>
                   </div>
                 )}
 
