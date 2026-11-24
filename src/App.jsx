@@ -411,13 +411,30 @@ function calcOrthinCost(selected) {
 }
 
 // ── MONDAY.COM ──
-const MONDAY_BOARD_DIARIO = 18391336187;
 const MONDAY_BOARD_ESTUDIOS = 6714927670;
 const ALL_DIARIO_BOARDS = [
   { year: 2022, id: 2467548914 }, { year: 2023, id: 1587343035 },
   { year: 2024, id: 5691055183 }, { year: 2025, id: 8104979141 },
   { year: 2026, id: 18391336187 }, { year: 2027, id: 18428784235 }
 ];
+// Fecha de hoy en hora de Ciudad de México (no UTC) y Diario del año correspondiente.
+// Cuando exista un Diario nuevo (ej. 2028), basta con agregarlo a ALL_DIARIO_BOARDS.
+const TZ_MX = "America/Mexico_City";
+const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+function hoyMx() {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: TZ_MX, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const get = (type) => parts.find(x => x.type === type).value;
+  return { y: Number(get("year")), m: Number(get("month")), iso: get("year") + "-" + get("month") + "-" + get("day") };
+}
+function diarioBoardId(year) {
+  const b = ALL_DIARIO_BOARDS.find(x => x.year === year);
+  return b ? b.id : null;
+}
+function grupoDelMes(groups, hoy) {
+  const want = normName(MESES_ES[hoy.m - 1] + " " + hoy.y);
+  const g = groups.find(x => normName(x.title) === want);
+  return g ? g.id : (groups.length ? groups[0].id : "");
+}
 const SEARCH_COLS = ["date","estado_1","cost","fecha","texto","status","dup__of_reason","estado_17","ubicaci_n","correo"];
 
 async function mondayApi(token, query) {
@@ -577,9 +594,12 @@ export default function App() {
     setShowMonday(true); setMResult(null); setMPatient(null);
     if (mToken) {
       try {
-        const d = await mondayApi(mToken, `query { boards(ids: [${MONDAY_BOARD_DIARIO}]) { groups { id title } } }`);
+        const hoy = hoyMx();
+        const boardId = diarioBoardId(hoy.y);
+        if (!boardId) { setMResult({ error: "No hay tablero Diario " + hoy.y + " configurado en el Cotizador" }); return; }
+        const d = await mondayApi(mToken, `query { boards(ids: [${boardId}]) { groups { id title } } }`);
         setMGroups(d.boards[0].groups);
-        if (!mGroupId && d.boards[0].groups.length) setMGroupId(d.boards[0].groups[0].id);
+        if (!mGroupId && d.boards[0].groups.length) setMGroupId(grupoDelMes(d.boards[0].groups, hoy));
       } catch { setMResult({ error: "Token inválido" }); }
     }
   };
@@ -587,9 +607,12 @@ export default function App() {
   const saveToken = async () => {
     try { localStorage.setItem("lbx_mt", mToken); } catch {}
     try {
-      const d = await mondayApi(mToken, `query { boards(ids: [${MONDAY_BOARD_DIARIO}]) { groups { id title } } }`);
+      const hoy = hoyMx();
+      const boardId = diarioBoardId(hoy.y);
+      if (!boardId) { setMResult({ error: "No hay tablero Diario " + hoy.y + " configurado en el Cotizador" }); return; }
+      const d = await mondayApi(mToken, `query { boards(ids: [${boardId}]) { groups { id title } } }`);
       setMGroups(d.boards[0].groups);
-      if (d.boards[0].groups.length) setMGroupId(d.boards[0].groups[0].id);
+      if (d.boards[0].groups.length) setMGroupId(grupoDelMes(d.boards[0].groups, hoy));
       setMResult(null);
     } catch { setMResult({ error: "Token inválido" }); }
   };
@@ -613,6 +636,9 @@ export default function App() {
     if (!mName.trim() || !mGroupId) return;
     setMLoading(true);
     try {
+      const hoy = hoyMx();
+      const boardId = diarioBoardId(hoy.y);
+      if (!boardId) throw new Error("No hay tablero Diario " + hoy.y + " configurado en el Cotizador");
       const sd = await mondayApi(mToken, `query { boards(ids: [${MONDAY_BOARD_ESTUDIOS}]) { items_page(limit: 500) { cursor items { id name } } } }`);
       let allItems = sd.boards[0].items_page.items;
       let cursor = sd.boards[0].items_page.cursor;
@@ -638,7 +664,7 @@ export default function App() {
         dropdown0__1: { labels: studyNames },
         conectar_tableros__1: { item_ids: studyIds },
         cost: totalFinal.toString(),
-        date: { date: new Date().toISOString().split("T")[0] },
+        date: { date: hoy.iso },
         dup__of_telefono62: { phone: normalizedPhone, countryShortName: "MX" },
         estado_15: { label: (mPatient && mPatient.hasDone) ? "Recurrent" : "New" }
       };
@@ -666,9 +692,9 @@ export default function App() {
       }
 
       const cv = JSON.stringify(colObj).replace(/"/g, '\\"');
-      const result = await mondayApi(mToken, `mutation { create_item(board_id: ${MONDAY_BOARD_DIARIO}, group_id: "${mGroupId}", item_name: "${mName.replace(/"/g, '\\"')}", column_values: "${cv}", create_labels_if_missing: true) { id } }`);
+      const result = await mondayApi(mToken, `mutation { create_item(board_id: ${boardId}, group_id: "${mGroupId}", item_name: "${mName.replace(/"/g, '\\"')}", column_values: "${cv}", create_labels_if_missing: true) { id } }`);
       const itemId = result.create_item.id;
-      setMResult({ success: true, url: `https://deltalabbox.monday.com/boards/${MONDAY_BOARD_DIARIO}/pulses/${itemId}` });
+      setMResult({ success: true, url: `https://deltalabbox.monday.com/boards/${boardId}/pulses/${itemId}` });
     } catch (e) {
       setMResult({ error: e.message || "Error al crear elemento" });
     }
